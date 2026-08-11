@@ -2025,18 +2025,13 @@ export function PublicInfluencerProfilePage() {
                               </p>
                             </div>
                           </div>
-                          <div className="flex min-w-0 items-center gap-1.5">
-                            <p className={platformFollowerClassName}>
-                              {platform.ownershipStatus === "unverified"
-                                ? "계정 인증 전"
-                                : formatDiscoveryAudienceMetric(
-                                    platform.followersLabel,
-                                  )}
-                            </p>
-                            <SelfReportedMetricBadge
-                              visible={platform.metricTrust === "self_reported"}
-                            />
-                          </div>
+                          <p className={platformFollowerClassName}>
+                            {platform.ownershipStatus === "unverified"
+                              ? "계정 인증 전"
+                              : formatDiscoveryAudienceMetric(
+                                  platform.followersLabel,
+                                )}
+                          </p>
                           <span
                             aria-hidden="true"
                             className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] text-neutral-400 transition group-hover:bg-blue-50 group-hover:text-blue-700 lg:absolute lg:right-0 lg:top-0 lg:h-7 lg:w-7"
@@ -2457,10 +2452,10 @@ function InfluencerDiscoveryTable({
       aria-busy={isLoading}
       className="min-h-0 flex-1 overflow-auto p-2.5 lg:flex lg:flex-col lg:overflow-hidden lg:p-4"
     >
-      <div className="hidden min-h-0 min-w-[1000px] w-full flex-1 flex-col rounded-[8px] border border-[#d9e0d9] bg-white lg:flex">
+      <div className="hidden min-h-0 min-w-[1080px] w-full flex-1 flex-col rounded-[8px] border border-[#d9e0d9] bg-white lg:flex">
         <div
           data-influencer-table-header="true"
-          className="grid shrink-0 grid-cols-[44px_78px_56px_minmax(150px,0.6fr)_minmax(240px,0.8fr)_minmax(140px,0.5fr)_110px] items-center gap-2.5 rounded-t-[8px] border-b border-[#d7ddd7] bg-[#f7f8f4] px-3 py-3 text-[12px] font-extrabold text-[#303630] shadow-[0_1px_0_rgba(215,221,215,0.9)]"
+          className="grid shrink-0 grid-cols-[44px_78px_120px_minmax(150px,0.6fr)_minmax(240px,0.8fr)_minmax(140px,0.5fr)_110px] items-center gap-2.5 rounded-t-[8px] border-b border-[#d7ddd7] bg-[#f7f8f4] px-3 py-3 text-[12px] font-extrabold text-[#303630] shadow-[0_1px_0_rgba(215,221,215,0.9)]"
         >
           <span className="text-center">관심</span>
           <span>국가</span>
@@ -2768,7 +2763,7 @@ function InfluencerDiscoveryTableRow({
       onMouseLeave={onPreviewEnd}
       onPointerLeave={onPreviewEnd}
       onBlur={onPreviewEnd}
-      className="group grid min-h-[64px] grid-cols-[44px_78px_56px_minmax(150px,0.6fr)_minmax(240px,0.8fr)_minmax(140px,0.5fr)_110px] items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-[#fbfcfa] focus-visible:bg-[#fbfcfa] focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-blue-600"
+      className="group grid min-h-[64px] grid-cols-[44px_78px_120px_minmax(150px,0.6fr)_minmax(240px,0.8fr)_minmax(140px,0.5fr)_110px] items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-[#fbfcfa] focus-visible:bg-[#fbfcfa] focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-blue-600"
     >
       <InfluencerInterestButton
         profile={profile}
@@ -2783,11 +2778,17 @@ function InfluencerDiscoveryTableRow({
       <div className="min-w-0">
         {primaryPlatform ? (
           <span
-            className="inline-flex max-w-full items-center text-neutral-800"
+            className="inline-flex max-w-full items-center gap-1.5 text-neutral-800"
             title={platformLabel}
             aria-label={platformLabel}
           >
             <PlatformBrandMark platform={primaryPlatform.platform} size="xs" />
+            <NaverInfluencerBadge
+              visible={
+                primaryPlatform.platform === "naver_blog" &&
+                primaryPlatform.naverInfluencer === true
+              }
+            />
           </span>
         ) : (
           <span className="text-[12px] font-bold text-neutral-400">
@@ -2823,10 +2824,7 @@ function InfluencerDiscoveryTableRow({
           )}
         </div>
       </div>
-      <div
-        className="flex min-w-0 items-center gap-1.5"
-        title={primaryPlatform?.performanceLabel}
-      >
+      <div className="min-w-0" title={primaryPlatform?.performanceLabel}>
         <p className="truncate text-[12px] font-extrabold text-neutral-950">
           {primaryPlatform
             ? primaryPlatform.ownershipStatus === "unverified"
@@ -2836,9 +2834,6 @@ function InfluencerDiscoveryTableRow({
               ? "플랫폼 인증 전"
               : audienceLabel}
         </p>
-        <SelfReportedMetricBadge
-          visible={primaryPlatform?.metricTrust === "self_reported"}
-        />
       </div>
 
       <div className="flex justify-end">
@@ -2959,7 +2954,7 @@ function InfluencerDiscoveryCompactRow({
                     : primaryPlatform.followersLabel
                 }
                 description={primaryPlatform.performanceLabel}
-                metricTrust={primaryPlatform.metricTrust}
+                naverInfluencer={primaryPlatform.naverInfluencer}
               />
             </div>
           ) : isPrivateRegisteredProfile ? (
@@ -3103,7 +3098,7 @@ function InfluencerPreviewCard({
             label={platformLabels[platform.platform]}
             value={platform.followersLabel}
             description={platform.performanceLabel}
-            metricTrust={platform.metricTrust}
+            naverInfluencer={platform.naverInfluencer}
           />
         ))}
         {profile.platforms.length === 0 && isPrivateRegisteredProfile ? (
@@ -4818,14 +4813,14 @@ function PlatformPill({
   label,
   value,
   description,
-  metricTrust,
+  naverInfluencer,
 }: {
   key?: string;
   platform: InfluencerPlatform;
   label: string;
   value?: string;
   description?: string;
-  metricTrust?: "self_reported";
+  naverInfluencer?: boolean;
 }) {
   const hasMetric = Boolean(value);
   const metricValue = hasMetric ? formatDiscoveryAudienceMetric(value) : "";
@@ -4842,19 +4837,21 @@ function PlatformPill({
       aria-label={accessibleLabel}
     >
       <PlatformBrandMark platform={platform} size={hasMetric ? "xs" : "sm"} />
+      <NaverInfluencerBadge
+        visible={platform === "naver_blog" && naverInfluencer === true}
+      />
       {metricValue ? (
         <span className="truncate text-neutral-950">{metricValue}</span>
       ) : null}
-      <SelfReportedMetricBadge visible={metricTrust === "self_reported"} />
     </span>
   );
 }
 
-function SelfReportedMetricBadge({ visible }: { visible: boolean }) {
+function NaverInfluencerBadge({ visible }: { visible: boolean }) {
   if (!visible) return null;
   return (
-    <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-neutral-100 px-1.5 text-[10px] font-bold text-neutral-600">
-      자가신고
+    <span className="inline-flex h-5 shrink-0 items-center rounded-full border border-blue-200 bg-blue-50 px-1.5 text-[10px] font-extrabold text-blue-700">
+      인플루언서
     </span>
   );
 }

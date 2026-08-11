@@ -305,12 +305,30 @@ const platformVerificationMetrics = exists(
 )
   ? read("server/platform-verification-metrics.ts")
   : "";
+const instagramCampaignMetrics = exists("server/instagram-campaign-metrics.ts")
+  ? read("server/instagram-campaign-metrics.ts")
+  : "";
+const instagramCampaignMetricMigration = exists(
+  "supabase/migrations/20260811130000_add_instagram_campaign_metrics.sql",
+)
+  ? read(
+      "supabase/migrations/20260811130000_add_instagram_campaign_metrics.sql",
+    )
+  : "";
 const naverSelfReportEnforcementMigration = exists(
   "supabase/migrations/20260807170000_enforce_naver_blog_self_report_metrics.sql",
 )
   ? read(
       "supabase/migrations/20260807170000_enforce_naver_blog_self_report_metrics.sql",
     )
+  : "";
+const campaignEligibilityMigration = exists(
+  "supabase/migrations/20260811120000_add_campaign_eligibility_rules.sql",
+)
+  ? read("supabase/migrations/20260811120000_add_campaign_eligibility_rules.sql")
+  : "";
+const naverInfluencerCredential = exists("server/naver-influencer-credential.ts")
+  ? read("server/naver-influencer-credential.ts")
   : "";
 const campaignApplicationConsentMigration = read(
   "supabase/migrations/20260806130000_add_campaign_application_consents.sql",
@@ -2445,11 +2463,72 @@ const naverBlogSelfReportChecks = [
         (marketplace.match(/platform:\s*"naver_blog"/g)?.length ?? 0),
   ],
 ];
-const missingNaverBlogSelfReportChecks = naverBlogSelfReportChecks
+void naverBlogSelfReportChecks;
+const naverCampaignEligibilityChecks = [
+  [
+    "rulebook",
+    agents.includes("Naver Influencer campaign eligibility is separate") &&
+      agents.includes("Store that self-attestation as a separate service-role-only record") &&
+      agents.includes("every later application still freezes it as `self_attested`") &&
+      agents.includes("no Naver visitor value may enter discovery"),
+  ],
+  [
+    "application-only visitor metric",
+    !influencerVerification.includes("naver_blog_recent_4d_average_visitors") &&
+      !marketplacePages.includes("SelfReportedMetricBadge") &&
+      !marketplace.includes('metricTrust?: "self_reported"') &&
+      server.includes("readFreshCampaignNaverMetric") &&
+      server.includes("fetchCampaignNaverMetricSingleFlight") &&
+      campaignEligibilityMigration.includes("interval '30 days'"),
+  ],
+  [
+    "mutually exclusive authoring",
+    campaignPages.includes('{ value: "naver_influencer", label: "인플루언서" }') &&
+      campaignPages.includes('label: "일방문자 수"') &&
+      campaignPages.includes('role="radiogroup"') &&
+      campaignPages.includes('role="radio"') &&
+      !campaignPages.includes("인플루언서와 일방문자 수는 둘 중 하나만 적용됩니다") &&
+      campaignEligibilityMigration.includes("jsonb_object_keys(item.rule)"),
+  ],
+  [
+    "fixed-host automatic check",
+    naverInfluencerCredential.includes(
+      'NAVER_INFLUENCER_ORIGIN = "https://in.naver.com"',
+    ) &&
+      naverInfluencerCredential.includes('redirect: "manual"') &&
+      naverInfluencerCredential.includes("NAVER_INFLUENCER_MAX_RESPONSE_BYTES") &&
+      naverInfluencerCredential.includes('return "unavailable"') &&
+      server.includes('code: "naver_influencer_check_unavailable"'),
+  ],
+  [
+    "separate one-year credentials",
+    campaignEligibilityMigration.includes(
+      "directsign_private.naver_influencer_qualifications",
+    ) &&
+      campaignEligibilityMigration.includes(
+        "directsign_private.naver_influencer_self_attestations",
+      ) &&
+      campaignEligibilityMigration.includes("interval '1 year'") &&
+      campaignEligibilityMigration.includes("force row level security") &&
+      campaignEligibilityMigration.includes("get_active_naver_influencer_badges") &&
+      server.includes("isCredentialActiveAt(state.selfAttestation.expiresAt)"),
+  ],
+  [
+    "immutable evidence and advertiser distinction",
+    campaignEligibilityMigration.includes("application_eligibility_snapshot") &&
+      campaignEligibilityMigration.includes("application eligibility snapshot is immutable") &&
+      server.includes('evidenceType: "self_attested"') &&
+      advertiserDashboard.includes("본인 확인 · 직접 확인 필요") &&
+      advertiserDashboard.includes("네이버에서 확인") &&
+      campaignPages.includes("확인은 1년간 보관") &&
+      marketplacePages.includes("function NaverInfluencerBadge"),
+  ],
+];
+const missingNaverBlogSelfReportChecks = naverCampaignEligibilityChecks
   .filter(([, condition]) => !condition)
   .map(([name]) => name);
 check(
-  "Naver Blog visitor metrics require a disclosed creator self-report and no unofficial collector",
+  "Naver campaign conditions isolate visitor metrics and distinguish automatic from one-year self-attested Influencer evidence",
   missingNaverBlogSelfReportChecks.length === 0,
   `Missing: ${missingNaverBlogSelfReportChecks.join(", ")}`,
 );
@@ -2632,11 +2711,6 @@ check(
     ) &&
     platformVerificationMetrics.includes("apiHandle !== requestedHandle") &&
     platformVerificationMetrics.includes("Number.isSafeInteger(parsed)") &&
-    platformVerificationMetrics.includes(
-      "buildNaverBlogSelfReportedChannelMetric",
-    ) &&
-    platformVerificationMetrics.includes('source: "creator_self_report"') &&
-    platformVerificationMetrics.includes('trust: "self_reported"') &&
     verifiedPlatformMetricMigration.includes(
       "directsign_apply_approved_platform_channel_metric",
     ) &&
@@ -2657,18 +2731,64 @@ check(
     verifiedPlatformMetricMigration.includes(
       "new.platform::text in ('youtube', 'tiktok', 'naver_blog')",
     ) &&
-    verifiedPlatformMetricMigration.includes("self_reported_channel_metric") &&
-    verifiedPlatformMetricMigration.includes(
-      "v_request.naver_blog_recent_4d_average_visitors",
-    ) &&
     naverSelfReportEnforcementMigration.includes(
       "new.audience_counts := coalesce(new.audience_counts, '{}'::jsonb) - 'naver_blog'",
     ) &&
+    server.includes("readTrustedInstagramFollowerMetricForRequest") &&
+    server.includes("accountHandle,") &&
+    server.includes("https://www.instagram.com/${accountHandle}/") &&
+    campaignPages.includes('rule.metric === "followers"') &&
+    !campaignPages.includes('rule.metric === "follower_count"') &&
+    campaignPages.includes("formatCampaignMetricCheckedAt(") &&
+    advertiserDashboard.includes("formatExportDateTime(evidence.evidenceAt)") &&
+    server.includes("fetchYoutubeFollowerSnapshot(channel)") &&
+    server.includes("readFreshCampaignNaverMetric") &&
+    instagramCampaignMetrics.includes(
+      "readTrustedInstagramDmFollowerMetric",
+    ) &&
+    instagramCampaignMetrics.includes(
+      "readTrustedInstagramChannelFollowerMetric",
+    ) &&
+    instagramCampaignMetrics.includes("Authorization: `Bearer ${accessToken}`") &&
+    !instagramCampaignMetrics.includes('searchParams.set("access_token"') &&
+    instagramCampaignMetricMigration.includes(
+      "directsign_upsert_campaign_instagram_follower_metric",
+    ) &&
+    campaignEligibilityMigration.includes("evidence.item ->> 'accountHandle'") &&
+    campaignEligibilityMigration.includes("evidence.item ->> 'accountUrl'") &&
+    advertiserDashboard.includes("getInstagramApplicationEvidenceAccount") &&
+    advertiserDashboard.includes("topDisplayPlatforms") &&
+    advertiserDashboard.includes("getPlatformDisplayName(evidence.platform)") &&
+    instagramCampaignMetricMigration.includes("verification_bound', true") &&
     !verifiedPlatformMetricMigration.includes("NVisitorgp4Ajax") &&
     agents.includes(
       "Approved production YouTube, TikTok, and Naver Blog accounts must materialize the exact verified channel",
     ),
-  "Approved platform channels must be canonical and immediate; YouTube/TikTok stay provider-bound while Naver accepts only its required exact-handle creator report, visibly discloses trust, and remains outside follower sorting",
+  "Approved platform channels stay canonical; Instagram campaign gates reuse the trusted DM metric with explicit exact-account refresh, YouTube uses the current official value, and Naver remains application-only",
+);
+
+check(
+  "Instagram Reel enrichment stays optional, official and private",
+  agents.includes(
+    "Reels links may be enriched only after the content submission is durable",
+  ) &&
+    server.includes("waitUntil(instagramMetricsEnrichment)") &&
+    server.includes("fetchApprovedInstagramReelMetricsForProfile") &&
+    server.includes('scope: "business_discovery_public"') &&
+    server.includes('response.setHeader("Cache-Control", "private, no-store")') &&
+    instagramCampaignMetrics.includes("fetchInstagramReelPublicMetrics") &&
+    instagramCampaignMetrics.includes("like_count") &&
+    instagramCampaignMetrics.includes("comments_count") &&
+    !instagramCampaignMetrics.includes("engagement_rate") &&
+    contractAdminViewer.includes(
+      '<PlatformBrandMark platform="instagram" size="sm" />',
+    ) &&
+    contractAdminViewer.includes("인스타그램 공개 성과") &&
+    contractAdminViewer.includes("공개 성과 확인 전입니다.") &&
+    (contractAdminViewer.match(/인스타그램에서 공개 성과를 확인할 수 없습니다\./g) ?? [])
+      .length === 1 &&
+    !contractAdminViewer.includes("인스타그램 성과를 최신 상태로 확인했습니다."),
+  "Submitted Reels must remain durable when Meta is unavailable and expose only exact official public metrics to the parties",
 );
 
 check(
@@ -3204,6 +3324,9 @@ check(
     landing.includes("function AdvertiserExportDashboardPreview") &&
     landing.includes("function AdvertiserApplicantsProductPreview") &&
     landing.includes("function IntroMobileServiceCapture") &&
+    /function IntroMobileServiceCapture[\s\S]*?className="h-full w-full object-contain object-center"/.test(
+      landing,
+    ) &&
     landing.includes("function InfluencerContractPdfPreview") &&
     landing.includes("function InfluencerRevisionRequestPreview") &&
     landing.includes("function InfluencerIntroDashboardPreview") &&

@@ -110,10 +110,23 @@ export interface VerificationAccountInfo {
 }
 
 export interface ApprovedInfluencerPlatform {
+  request_id: string;
   platform: InfluencerPlatform;
   handle: string;
   url?: string;
   approved_at?: string;
+  instagram_follower?: {
+    count: number;
+    checked_at: string;
+    source: "instagram_user_profile_api" | "instagram_graph_api";
+  };
+  naver_influencer?: {
+    evidence_type: "auto_verified" | "self_attested";
+    status: "active" | "expired";
+    profile_url: string;
+    evidence_at: string;
+    expires_at: string;
+  };
 }
 
 export interface VerificationProfile {

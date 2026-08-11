@@ -24,7 +24,7 @@ import { translateApiErrorMessage } from "../../domain/userMessages";
 import { useBodyScrollLock } from "../../hooks/useBodyScrollLock";
 
 const TERMS_DOCUMENT_VERSION = "2026-06-02";
-const PRIVACY_POLICY_DOCUMENT_VERSION = "2026-08-08.3";
+const PRIVACY_POLICY_DOCUMENT_VERSION = "2026-08-11.2";
 
 type SignupRole = "advertiser" | "influencer";
 

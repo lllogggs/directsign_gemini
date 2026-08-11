@@ -1,4 +1,5 @@
 import type { InfluencerPlatform } from "./verification.js";
+import type { CampaignEligibilityRule } from "./campaignEligibility.js";
 import {
   isoAlpha2CountryCodes,
   isIsoAlpha2CountryCode,
@@ -217,6 +218,7 @@ export type MarketplaceBrandCampaign = {
   uploadDeadline?: string;
   platforms?: InfluencerPlatform[];
   deliverables?: string[];
+  eligibilityRules?: CampaignEligibilityRule[];
   applicationContactFields?: CampaignApplicationContactField[];
   applicationContactConsentVersion?: string;
   requiredConsents?: Array<{
@@ -262,10 +264,7 @@ export type MarketplaceInfluencerProfile = {
     followersLabel: string;
     performanceLabel: string;
     ownershipStatus?: "unverified" | "verified";
-    metricType?: "average_daily_visitors_4d";
-    metricSource?: "creator_self_report";
-    metricTrust?: "self_reported";
-    metricPeriodDays?: 4;
+    naverInfluencer?: boolean;
   }>;
   collaborationTypes: CampaignProposalType[];
   startingPriceLabel: string;
@@ -645,7 +644,7 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
         handle: "minseo-home",
         url: "https://blog.naver.com/minseo-home",
         followersLabel: "",
-        performanceLabel: "자가신고 미입력",
+        performanceLabel: "계정 인증 완료",
       },
     ],
     collaborationTypes: ["product_seeding", "visit_review", "sponsored_post"],
@@ -843,7 +842,7 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
         handle: "rooday",
         url: "https://blog.naver.com/rooday",
         followersLabel: "",
-        performanceLabel: "자가신고 미입력",
+        performanceLabel: "계정 인증 완료",
       },
     ],
     collaborationTypes: ["visit_review", "product_seeding", "group_buy"],
@@ -893,7 +892,7 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
         handle: "today-taste",
         url: "https://blog.naver.com/today-taste",
         followersLabel: "",
-        performanceLabel: "자가신고 미입력",
+        performanceLabel: "계정 인증 완료",
       },
     ],
     collaborationTypes: ["group_buy", "product_seeding", "sponsored_post"],
@@ -1420,15 +1419,10 @@ export function getChannelAudienceSortValue(
   platforms: Array<{
     platform?: InfluencerPlatform;
     followersLabel?: string;
-    metricTrust?: "self_reported";
   }> = [],
 ) {
   const values = platforms
-    .filter(
-      (platform) =>
-        platform.platform !== "naver_blog" &&
-        platform.metricTrust !== "self_reported",
-    )
+    .filter((platform) => platform.platform !== "naver_blog")
     .map((platform) => parseAudienceCountLabel(platform.followersLabel))
     .filter((value) => Number.isFinite(value));
 

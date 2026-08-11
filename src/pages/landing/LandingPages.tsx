@@ -2898,7 +2898,7 @@ function IntroMobileServiceCapture({
           <img
             src={imageSrc}
             alt={imageAlt}
-            className="h-full w-full object-cover object-top"
+            className="h-full w-full object-contain object-center"
             loading="eager"
           />
         </div>

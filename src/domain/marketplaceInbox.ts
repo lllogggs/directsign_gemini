@@ -59,6 +59,22 @@ export type MarketplaceMessageThread = {
     phone?: string;
     email?: string;
   };
+  naverInfluencerEvidence?: {
+    evidenceType: "auto_verified" | "self_attested";
+    profileUrl: string;
+    evidenceAt: string;
+    decisionAt: string;
+  };
+  applicationAudienceEvidence?: Array<{
+    platform: "instagram" | "youtube";
+    metric: "follower_count" | "subscriber_count";
+    count: number;
+    minimum: number;
+    evidenceAt: string;
+    decisionAt: string;
+    accountHandle?: string;
+    accountUrl?: string;
+  }>;
   convertedContractId?: string;
   createdAt: string;
   updatedAt: string;

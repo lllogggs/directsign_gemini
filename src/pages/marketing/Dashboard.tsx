@@ -109,6 +109,7 @@ import {
   type MarketplaceMessagesResponse,
 } from "../../domain/marketplaceInbox";
 import { getMarketplaceInfluencerAvatarUrlFromHref } from "../../domain/marketplaceAvatars";
+import { getPlatformDisplayName } from "../../domain/platformDisplay";
 import {
   exportWorkbookToGoogleSheets,
 } from "../../domain/googleWorkspaceExport";
@@ -5142,6 +5143,22 @@ function compareCampaignApplicantsBySort(
   );
 }
 
+type ApplicationAudienceEvidence = NonNullable<
+  MarketplaceMessageThread["applicationAudienceEvidence"]
+>[number];
+
+function getInstagramApplicationEvidenceAccount(
+  evidence: ApplicationAudienceEvidence,
+) {
+  if (evidence.platform !== "instagram") return undefined;
+  const handle = evidence.accountHandle?.trim().toLowerCase() ?? "";
+  if (!/^[a-z0-9._]{1,30}$/.test(handle)) return undefined;
+  const url = `https://www.instagram.com/${handle}/`;
+  return evidence.accountHandle === handle && evidence.accountUrl === url
+    ? { handle: `@${handle}`, url }
+    : undefined;
+}
+
 function CampaignApplicantRow({
   thread,
   onAcceptApplication,
@@ -5170,6 +5187,12 @@ function CampaignApplicantRow({
     thread,
     applicantProfile,
   );
+  const instagramEvidenceAccount = thread.applicationAudienceEvidence
+    ?.map(getInstagramApplicationEvidenceAccount)
+    .find(Boolean);
+  const topDisplayPlatforms = instagramEvidenceAccount
+    ? displayPlatforms.filter((platform) => platform.platform !== "instagram")
+    : displayPlatforms;
   const applicantPerformance = getCampaignApplicantPerformanceLabel(
     displayPlatforms,
     applicantProfile,
@@ -5188,7 +5211,7 @@ function CampaignApplicantRow({
   const initial = applicantName.trim().slice(0, 1) || "인";
   const hasProfileAction = Boolean(profileHref);
   const primaryActionSpan = hasProfileAction ? "" : "col-span-2";
-  const firstPlatform = displayPlatforms[0];
+  const firstPlatform = topDisplayPlatforms[0];
   const primaryHandle = firstPlatform?.handle || firstPlatform?.followersLabel;
 
   const handleAccept = async () => {
@@ -5269,13 +5292,92 @@ function CampaignApplicantRow({
         </div>
       </div>
       <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
-        <ApplicantPlatformLinks platforms={displayPlatforms} />
+        {topDisplayPlatforms.length ? (
+          <ApplicantPlatformLinks platforms={topDisplayPlatforms} />
+        ) : null}
         <ApplicantCategoryPill category={mainCategory} />
       </div>
       {applicantPerformance ? (
         <p className="truncate text-[11px] font-semibold text-[#606861]">
           {applicantPerformance}
         </p>
+      ) : null}
+      {thread.applicationAudienceEvidence?.length ? (
+        <div className="grid gap-1.5" data-application-audience-evidence>
+          {thread.applicationAudienceEvidence.map((evidence) => {
+            const account = getInstagramApplicationEvidenceAccount(evidence);
+            return (
+              <div
+                key={`${evidence.platform}-${evidence.metric}`}
+                className="grid min-w-0 gap-1 text-[11px] font-semibold text-neutral-600"
+              >
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <PlatformBrandMark platform={evidence.platform} size="sm" />
+                  <span className="shrink-0 font-extrabold text-neutral-900">
+                    {getPlatformDisplayName(evidence.platform)}
+                  </span>
+                  {account ? (
+                    <a
+                      href={account.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex min-w-0 items-center gap-1 truncate text-blue-700 hover:underline"
+                    >
+                      <span className="truncate">{account.handle}</span>
+                      <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
+                    </a>
+                  ) : null}
+                </div>
+                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="font-extrabold text-neutral-900">
+                    신청 기준 {evidence.platform === "youtube" ? "구독자" : "팔로워"}{" "}
+                    {evidence.count.toLocaleString("ko-KR")}명
+                  </span>
+                  <span>
+                    조건 {evidence.minimum.toLocaleString("ko-KR")}명 이상
+                  </span>
+                  <span className="text-neutral-400">
+                    {formatExportDateTime(evidence.evidenceAt)} 확인
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+      {thread.naverInfluencerEvidence ? (
+        <div
+          data-naver-influencer-evidence={
+            thread.naverInfluencerEvidence.evidenceType
+          }
+          className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold"
+        >
+          <span
+            className={`inline-flex h-6 shrink-0 items-center rounded-full border px-2 font-extrabold ${
+              thread.naverInfluencerEvidence.evidenceType === "auto_verified"
+                ? "border-blue-200 bg-blue-50 text-blue-700"
+                : "border-neutral-300 bg-neutral-50 text-neutral-700"
+            }`}
+          >
+            {thread.naverInfluencerEvidence.evidenceType === "auto_verified"
+              ? "자동 확인됨"
+              : "본인 확인 · 직접 확인 필요"}
+          </span>
+          <a
+            href={thread.naverInfluencerEvidence.profileUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-blue-700 hover:underline"
+          >
+            네이버에서 확인
+            <ExternalLink className="h-3 w-3" aria-hidden="true" />
+          </a>
+          {thread.naverInfluencerEvidence.evidenceType === "self_attested" ? (
+            <span className="w-full text-neutral-500">
+              신청자가 직접 확인했으며 연락미 자동 확인은 완료되지 않았습니다.
+            </span>
+          ) : null}
+        </div>
       ) : null}
       {thread.applicationContact?.phone || thread.applicationContact?.email ? (
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-semibold text-[#4f5850]">
@@ -5346,14 +5448,14 @@ function CampaignApplicantRow({
 
 function getCampaignApplicantPerformanceLabel(
   platforms: Array<{
+    platform?: InfluencerPlatform;
     followersLabel?: string;
     performanceLabel?: string;
-    metricTrust?: "self_reported";
   }>,
   profile?: MarketplaceInfluencerProfile,
 ) {
   const performanceLabels = platforms
-    .filter((platform) => platform.metricTrust !== "self_reported")
+    .filter((platform) => platform.platform !== "naver_blog")
     .map((platform) => platform.performanceLabel)
     .filter((label): label is string => Boolean(label?.trim()));
   const audienceLabel = profile?.audience?.trim();
@@ -5399,11 +5501,6 @@ function ApplicantPlatformLinks({
           <>
             <span className="shrink-0">{platformMeta.mark}</span>
             {text ? <span className="truncate">{text}</span> : null}
-            {item.metricTrust === "self_reported" ? (
-              <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-neutral-100 px-1.5 text-[10px] font-bold text-neutral-600">
-                자가신고
-              </span>
-            ) : null}
           </>
         );
 
@@ -5618,14 +5715,21 @@ function getCampaignApplicantDisplayPlatforms(
     !thread.counterpartHref && fallbackProfile?.platforms.length
       ? fallbackProfile.platforms
       : thread.platforms;
+  const hasInstagramApplicationEvidence = Boolean(
+    thread.applicationAudienceEvidence?.some(
+      (evidence) => evidence.platform === "instagram",
+    ),
+  );
 
   return platforms.map((platform) => ({
     ...platform,
-    followersLabel: /^(?:계정 연동|채널 확인|미입력|-)$/i.test(
-      platform.followersLabel?.trim() ?? "",
-    )
-      ? undefined
-      : platform.followersLabel,
+    followersLabel:
+      (platform.platform === "instagram" && hasInstagramApplicationEvidence) ||
+      /^(?:계정 연동|채널 확인|미입력|-)$/i.test(
+        platform.followersLabel?.trim() ?? "",
+      )
+        ? undefined
+        : platform.followersLabel,
   }));
 }
 
@@ -8633,7 +8737,6 @@ function getContractCreatorChannelMetricLabel(profile?: MarketplaceInfluencerPro
       joinExportValues([
         platformLabels[platform.platform],
         platform.followersLabel,
-        platform.metricTrust === "self_reported" ? "자가신고" : undefined,
       ]),
     ),
   );
@@ -9001,7 +9104,6 @@ function buildAdvertiserCampaignApplicantExportSheet(
               platformLabels[platform.platform],
               platform.handle,
               platform.followersLabel,
-              platform.metricTrust === "self_reported" ? "자가신고" : undefined,
             ]),
           ),
         ),

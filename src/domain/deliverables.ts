@@ -29,6 +29,13 @@ export interface DeliverableSubmission {
   files: DeliverableFile[];
 }
 
+export interface InstagramReelMetrics {
+  status: "available" | "unavailable";
+  checkedAt: string;
+  likeCount?: number;
+  commentsCount?: number;
+}
+
 export interface DeliverableRequirement {
   id: string;
   contract_id: string;
@@ -117,6 +124,50 @@ export const formatFileSize = (bytes?: number | null) => {
 export const getSubmissionNote = (submission: DeliverableSubmission) => {
   const note = submission.metadata?.note;
   return typeof note === "string" && note.trim() ? note.trim() : undefined;
+};
+
+export const getInstagramReelMetrics = (
+  submission: DeliverableSubmission,
+): InstagramReelMetrics | undefined => {
+  const raw = submission.metadata?.instagram_reel_metrics;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const record = raw as Record<string, unknown>;
+  if (
+    (record.status !== "available" && record.status !== "unavailable") ||
+    record.provider !== "instagram_graph_api" ||
+    record.scope !== "business_discovery_public" ||
+    typeof record.checked_at !== "string" ||
+    !Number.isFinite(Date.parse(record.checked_at))
+  ) {
+    return undefined;
+  }
+  const readCount = (value: unknown) =>
+    typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+      ? value
+      : undefined;
+  return {
+    status: record.status,
+    checkedAt: new Date(record.checked_at).toISOString(),
+    likeCount: readCount(record.like_count),
+    commentsCount: readCount(record.comments_count),
+  };
+};
+
+export const isInstagramReelUrl = (value?: string | null) => {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    const hostname = url.hostname.toLowerCase().replace(/^www\./, "");
+    const parts = url.pathname.split("/").filter(Boolean);
+    return (
+      url.protocol === "https:" &&
+      hostname === "instagram.com" &&
+      (parts[0] === "reel" || parts[0] === "reels") &&
+      /^[A-Za-z0-9_-]{5,64}$/.test(parts[1] ?? "")
+    );
+  } catch {
+    return false;
+  }
 };
 
 export const validateDeliverableUrl = (value: string) => {

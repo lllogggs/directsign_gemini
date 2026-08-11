@@ -24,6 +24,7 @@ import { PRODUCT_NAME } from "../../domain/brand";
 import { SUPPORT_ACCESS_CONSENT_TEXT } from "../../domain/legalConsent";
 import { buildSupportTicketPath } from "../../domain/support";
 import { BrandLogo, LogoMark } from "../../components/BrandLogo";
+import { PlatformBrandMark } from "../../components/PlatformBrandMark";
 import { AdvertiserAccountSettingsMenu } from "../../components/AdvertiserAccountSettingsMenu";
 import { HeaderMessageCenterButton } from "../../components/HeaderMessageCenterButton";
 import { HeaderNotificationCenterButton } from "../../components/HeaderNotificationCenterButton";
@@ -56,7 +57,9 @@ import { SCREEN_HELP_CONTENT } from "../../domain/screenHelp";
 import {
   formatFileSize,
   getDeliverableErrorMessage,
+  getInstagramReelMetrics,
   getSubmissionNote,
+  isInstagramReelUrl,
   isDeliverableRevisionStatus,
   reviewStatusLabel,
   reviewStatusTone,
@@ -181,6 +184,8 @@ export function ContractAdminViewer() {
   const [isLoadingDeliverables, setIsLoadingDeliverables] = useState(false);
   const [reviewComments, setReviewComments] = useState<Record<string, string>>({});
   const [reviewingDeliverableId, setReviewingDeliverableId] = useState("");
+  const [refreshingInstagramMetricsId, setRefreshingInstagramMetricsId] =
+    useState("");
   const [isClosingContract, setIsClosingContract] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [contractAccessState, setContractAccessState] =
@@ -749,6 +754,42 @@ export function ContractAdminViewer() {
     }
   };
 
+  const refreshInstagramMetrics = async (deliverableId: string) => {
+    if (refreshingInstagramMetricsId) return;
+    setRefreshingInstagramMetricsId(deliverableId);
+    setDeliverablesError("");
+    setDeliverablesNotice("");
+    try {
+      const response = await apiFetch(
+        `/api/contracts/${encodeURIComponent(
+          contract.id,
+        )}/deliverables/${encodeURIComponent(
+          deliverableId,
+        )}/instagram-metrics/refresh`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { Accept: "application/json" },
+        },
+      );
+      const data = (await response.json().catch(() => ({}))) as
+        DeliverablesResponse & { error?: string };
+      if (!response.ok || !Array.isArray(data.submissions)) {
+        throw new Error(data.error ?? "인스타그램 성과를 확인하지 못했습니다.");
+      }
+      setDeliverables(data);
+    } catch (error) {
+      setDeliverablesError(
+        getDeliverableErrorMessage(
+          error instanceof Error ? error.message : undefined,
+          "인스타그램 성과를 확인하지 못했습니다.",
+        ),
+      );
+    } finally {
+      setRefreshingInstagramMetricsId("");
+    }
+  };
+
   const reviewDeliverable = async (
     deliverableId: string,
     reviewStatus: Extract<
@@ -1036,11 +1077,13 @@ export function ContractAdminViewer() {
             isClosingContract={isClosingContract}
             reviewComments={reviewComments}
             reviewingDeliverableId={reviewingDeliverableId}
+            refreshingInstagramMetricsId={refreshingInstagramMetricsId}
             onReload={loadDeliverables}
             onCommentChange={(deliverableId, value) =>
               setReviewComments((current) => ({ ...current, [deliverableId]: value }))
             }
             onReview={reviewDeliverable}
+            onRefreshInstagramMetrics={refreshInstagramMetrics}
             onCloseContract={closeContract}
           />
         )}
@@ -1479,9 +1522,11 @@ function AdvertiserDeliverablesPanel({
   isClosingContract,
   reviewComments,
   reviewingDeliverableId,
+  refreshingInstagramMetricsId,
   onReload,
   onCommentChange,
   onReview,
+  onRefreshInstagramMetrics,
   onCloseContract,
 }: {
   data?: DeliverablesResponse;
@@ -1493,6 +1538,7 @@ function AdvertiserDeliverablesPanel({
   isClosingContract: boolean;
   reviewComments: Record<string, string>;
   reviewingDeliverableId: string;
+  refreshingInstagramMetricsId: string;
   onReload: () => void;
   onCommentChange: (deliverableId: string, value: string) => void;
   onReview: (
@@ -1502,6 +1548,7 @@ function AdvertiserDeliverablesPanel({
       "approved" | "changes_requested" | "rejected"
     >,
   ) => void;
+  onRefreshInstagramMetrics: (deliverableId: string) => void;
   onCloseContract: () => void;
 }) {
   useEffect(() => {
@@ -1656,6 +1703,8 @@ function AdvertiserDeliverablesPanel({
                       submission.review_status,
                     );
                     const note = formatOperationalText(getSubmissionNote(submission));
+                    const instagramMetrics = getInstagramReelMetrics(submission);
+                    const isInstagramReel = isInstagramReelUrl(submission.url);
 
                     return (
                       <div
@@ -1688,6 +1737,63 @@ function AdvertiserDeliverablesPanel({
                             </span>
                           </a>
                         )}
+                        {isInstagramReel ? (
+                          <div
+                            data-instagram-reel-metrics={
+                              instagramMetrics?.status ?? "pending"
+                            }
+                            className="mt-3 rounded-md border border-neutral-200 bg-white px-3 py-2.5"
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="flex items-center gap-1.5 text-[12px] font-extrabold text-neutral-900">
+                                <PlatformBrandMark platform="instagram" size="sm" />
+                                <span>인스타그램 공개 성과</span>
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onRefreshInstagramMetrics(submission.id)
+                                }
+                                disabled={Boolean(refreshingInstagramMetricsId)}
+                                className="inline-flex h-7 items-center gap-1 rounded-md border border-neutral-200 px-2 text-[11px] font-extrabold text-neutral-600 transition hover:border-neutral-400 disabled:cursor-wait disabled:opacity-50"
+                              >
+                                <RefreshCw
+                                  className={`h-3 w-3 ${
+                                    refreshingInstagramMetricsId === submission.id
+                                      ? "animate-spin"
+                                      : ""
+                                  }`}
+                                />
+                                성과 새로고침
+                              </button>
+                            </div>
+                            {instagramMetrics?.status === "available" ? (
+                              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12px] font-bold text-neutral-700">
+                                {instagramMetrics.likeCount !== undefined ? (
+                                  <span>
+                                    좋아요 {instagramMetrics.likeCount.toLocaleString("ko-KR")}
+                                  </span>
+                                ) : null}
+                                {instagramMetrics.commentsCount !== undefined ? (
+                                  <span>
+                                    댓글 {instagramMetrics.commentsCount.toLocaleString("ko-KR")}
+                                  </span>
+                                ) : null}
+                                <span className="text-neutral-400">
+                                  {formatDateTime(instagramMetrics.checkedAt)} 확인
+                                </span>
+                              </div>
+                            ) : instagramMetrics?.status === "unavailable" ? (
+                              <p className="mt-2 text-[12px] font-bold text-neutral-500">
+                                인스타그램에서 공개 성과를 확인할 수 없습니다.
+                              </p>
+                            ) : (
+                              <p className="mt-2 text-[12px] font-bold text-neutral-500">
+                                공개 성과 확인 전입니다.
+                              </p>
+                            )}
+                          </div>
+                        ) : null}
                         {submission.files.length > 0 && (
                           <div className="mt-3 flex flex-wrap gap-2">
                             {submission.files.map((file) => (

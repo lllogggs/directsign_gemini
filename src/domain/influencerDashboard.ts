@@ -1,4 +1,5 @@
 import type {
+  ApprovedInfluencerPlatform,
   InfluencerPlatform,
   VerificationRequest,
   VerificationStatus,
@@ -59,12 +60,7 @@ export interface InfluencerDashboardUser {
 export interface InfluencerDashboardVerification {
   status: VerificationStatus;
   latest_request?: VerificationRequest;
-  approved_platforms: Array<{
-    platform: InfluencerPlatform;
-    handle: string;
-    url?: string;
-    approved_at?: string;
-  }>;
+  approved_platforms: ApprovedInfluencerPlatform[];
 }
 
 export interface InfluencerDashboardPublicProfile {

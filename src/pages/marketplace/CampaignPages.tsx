@@ -46,6 +46,16 @@ import {
   normalizeCampaignTitle,
 } from "../../domain/campaignPresentation";
 import {
+  CAMPAIGN_ELIGIBILITY_MAXIMUM,
+  campaignEligibilityPlatforms,
+  campaignEligibilityPolicy,
+  formatCampaignEligibilityRule,
+  formatCampaignEligibilityRules,
+  type CampaignEligibilityPlatform,
+  type CampaignEligibilityRule,
+  type NaverCampaignEligibilityMode,
+} from "../../domain/campaignEligibility";
+import {
   campaignProposalTypeOptions,
   CAMPAIGN_APPLICATION_CONTACT_POLICY_VERSION,
   formatCampaignApplicationStats,
@@ -75,7 +85,11 @@ import {
   type MarketplaceMessageThread,
   type MarketplaceMessagesResponse,
 } from "../../domain/marketplaceInbox";
-import type { InfluencerPlatform } from "../../domain/verification";
+import type {
+  ApprovedInfluencerPlatform,
+  InfluencerPlatform,
+  VerificationSummary,
+} from "../../domain/verification";
 import {
   isAdvertiserCampaignAccess,
   isVerificationRequiredError,
@@ -270,6 +284,82 @@ const platformOptions: PlatformFilter[] = [
 
 const OTHER_CAMPAIGN_TYPE_OPTION_LABEL = "기타(직접작성)";
 
+type CampaignEligibilityMinimums = Record<CampaignEligibilityPlatform, string>;
+
+function createEmptyCampaignEligibilityMinimums(): CampaignEligibilityMinimums {
+  return {
+    instagram: "",
+    youtube: "",
+    naver_blog: "",
+  };
+}
+
+function formatCampaignMetricCheckedAt(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return `${[
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join(".")} ${[
+    String(date.getHours()).padStart(2, "0"),
+    String(date.getMinutes()).padStart(2, "0"),
+  ].join(":")}`;
+}
+
+function createCampaignEligibilityMinimums(
+  rules: readonly CampaignEligibilityRule[] | undefined,
+): CampaignEligibilityMinimums {
+  const minimums = createEmptyCampaignEligibilityMinimums();
+  for (const rule of rules ?? []) {
+    if ("minimum" in rule) minimums[rule.platform] = String(rule.minimum);
+  }
+  return minimums;
+}
+
+function getNaverCampaignEligibilityMode(
+  rules: readonly CampaignEligibilityRule[] | undefined,
+): "" | NaverCampaignEligibilityMode {
+  return (
+    rules?.find((rule) => rule.platform === "naver_blog")?.metric ?? ""
+  );
+}
+
+function buildCampaignEligibilityRules(
+  minimums: CampaignEligibilityMinimums,
+  selectedPlatforms: readonly InfluencerPlatform[],
+  naverEligibilityMode: "" | NaverCampaignEligibilityMode,
+): CampaignEligibilityRule[] {
+  const rules: CampaignEligibilityRule[] = [];
+  for (const platform of campaignEligibilityPlatforms) {
+    if (!selectedPlatforms.includes(platform)) continue;
+    if (
+      platform === "naver_blog" &&
+      naverEligibilityMode === "naver_influencer"
+    ) {
+      rules.push({ platform, metric: "naver_influencer" });
+      continue;
+    }
+    const rawMinimum = minimums[platform].trim();
+    if (
+      !rawMinimum ||
+      (platform === "naver_blog" &&
+        naverEligibilityMode !== "average_daily_visitors_4d")
+    ) continue;
+    const minimum = Number(rawMinimum);
+    if (!Number.isSafeInteger(minimum) || minimum < 1) continue;
+    if (platform === "instagram") {
+      rules.push({ platform, metric: "followers", minimum });
+    } else if (platform === "youtube") {
+      rules.push({ platform, metric: "subscribers", minimum });
+    } else {
+      rules.push({ platform, metric: "average_daily_visitors_4d", minimum });
+    }
+  }
+  return rules;
+}
+
 type CampaignFormState = {
   title: string;
   type: CampaignProposalType;
@@ -283,6 +373,8 @@ type CampaignFormState = {
   platforms: InfluencerPlatform[];
   targetCountries: MarketplaceCountryCode[];
   deliverables: string;
+  eligibilityMinimums: CampaignEligibilityMinimums;
+  naverEligibilityMode: "" | NaverCampaignEligibilityMode;
   thumbnailUrl: string;
   applicationContactFields: CampaignApplicationContactField[];
   requiredConsents: NonNullable<MarketplaceBrandCampaign["requiredConsents"]>;
@@ -302,6 +394,8 @@ function createEmptyCampaignForm(): CampaignFormState {
     platforms: ["instagram"],
     targetCountries: [],
     deliverables: "",
+    eligibilityMinimums: createEmptyCampaignEligibilityMinimums(),
+    naverEligibilityMode: "",
     thumbnailUrl: "",
     applicationContactFields: [],
     requiredConsents: [],
@@ -325,6 +419,12 @@ function createCampaignFormFromRecord(
     platforms: campaign.platforms?.length ? [...campaign.platforms] : ["instagram"],
     targetCountries: campaign.targetCountries ? [...campaign.targetCountries] : [],
     deliverables: campaign.deliverables?.join(", ") ?? "",
+    eligibilityMinimums: createCampaignEligibilityMinimums(
+      campaign.eligibilityRules,
+    ),
+    naverEligibilityMode: getNaverCampaignEligibilityMode(
+      campaign.eligibilityRules,
+    ),
     thumbnailUrl: campaign.thumbnailUrl ?? "",
     applicationContactFields: campaign.applicationContactFields
       ? [...campaign.applicationContactFields]
@@ -370,6 +470,7 @@ function getLocalCampaignEditPolicy(
         "platforms",
         "targetCountries",
         "deliverables",
+        "eligibilityRules",
         "applicationContactFields",
         "requiredConsents",
       ],
@@ -490,6 +591,39 @@ type CampaignApplicationStaleApiError = {
   error?: string;
 };
 
+type NaverInfluencerAttestationPrompt = {
+  challenge: string;
+  profileUrl: string;
+  version: string;
+};
+
+type NaverInfluencerCheckUnavailableApiError = {
+  code?: "naver_influencer_check_unavailable";
+  error?: string;
+  self_attestation_available?: boolean;
+  self_attestation_challenge?: string;
+  naver_influencer_profile_url?: string;
+  self_attestation_version?: string;
+};
+
+function readNaverInfluencerAttestationPrompt(
+  value: unknown,
+): NaverInfluencerAttestationPrompt | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = value as NaverInfluencerCheckUnavailableApiError;
+  return record.code === "naver_influencer_check_unavailable" &&
+    record.self_attestation_available === true &&
+    typeof record.self_attestation_challenge === "string" &&
+    typeof record.naver_influencer_profile_url === "string" &&
+    typeof record.self_attestation_version === "string"
+    ? {
+        challenge: record.self_attestation_challenge,
+        profileUrl: record.naver_influencer_profile_url,
+        version: record.self_attestation_version,
+      }
+    : undefined;
+}
+
 function isCampaignApplicationStaleError(
   value: unknown,
 ): value is CampaignApplicationStaleApiError {
@@ -555,6 +689,14 @@ type CampaignApplicationSubmission = {
     email?: string;
   };
   applicationContactConsentAccepted: boolean;
+  eligibilityAccountIds: Partial<
+    Record<CampaignEligibilityPlatform, string>
+  >;
+  naverInfluencerProfileUrl?: string;
+  naverInfluencerSelfAttestation?: {
+    accepted: true;
+    challenge: string;
+  };
 };
 
 type CampaignApplicationsState =
@@ -771,6 +913,23 @@ export function AdvertiserCampaignRecruitmentPage() {
     normalizedCampaignTitle,
   );
   const campaignTitleValidationError = getCampaignTitleValidationError(form.title);
+  const invalidEligibilityPlatform = campaignEligibilityPlatforms.find((platform) => {
+    const rawMinimum = form.eligibilityMinimums[platform].trim();
+    if (
+      platform === "naver_blog" &&
+      form.naverEligibilityMode !== "average_daily_visitors_4d"
+    ) return false;
+    if (!rawMinimum || !form.platforms.includes(platform)) return false;
+    const minimum = Number(rawMinimum);
+    return (
+      !Number.isSafeInteger(minimum) ||
+      minimum < 1 ||
+      minimum > CAMPAIGN_ELIGIBILITY_MAXIMUM
+    );
+  });
+  const eligibilityValidationError = invalidEligibilityPlatform
+    ? `${campaignEligibilityPolicy[invalidEligibilityPlatform].inputLabel}를 1~10억 사이 숫자로 입력해 주세요.`
+    : undefined;
   const hasValidRequiredConsents = form.requiredConsents.every(
     (consent) => consent.text.trim().length > 0 && consent.text.trim().length <= 300,
   );
@@ -778,6 +937,7 @@ export function AdvertiserCampaignRecruitmentPage() {
     (requiresOtherTypeLabel ? 11 : 10) + (form.requiredConsents.length > 0 ? 1 : 0);
   const hasRequiredCampaignFields =
     !campaignTitleValidationError &&
+    !eligibilityValidationError &&
     form.platforms.length > 0 &&
     (!requiresOtherTypeLabel || form.otherTypeLabel.trim().length > 0) &&
     form.applicantLimit.trim().length > 0 &&
@@ -832,6 +992,8 @@ export function AdvertiserCampaignRecruitmentPage() {
   const submitHelperText =
     normalizedCampaignTitle && campaignTitleValidationError
       ? campaignTitleValidationError
+      : eligibilityValidationError
+        ? eligibilityValidationError
       : isEditMode
     ? activeEditMode === "locked"
       ? ""
@@ -864,6 +1026,19 @@ export function AdvertiserCampaignRecruitmentPage() {
         platforms: exists
           ? current.platforms.filter((item) => item !== platform)
           : [...current.platforms, platform],
+        eligibilityMinimums:
+          exists && campaignEligibilityPlatforms.includes(
+            platform as CampaignEligibilityPlatform,
+          )
+            ? {
+                ...current.eligibilityMinimums,
+                [platform]: "",
+              }
+            : current.eligibilityMinimums,
+        naverEligibilityMode:
+          exists && platform === "naver_blog"
+            ? ""
+            : current.naverEligibilityMode,
       };
     });
   };
@@ -1047,6 +1222,11 @@ export function AdvertiserCampaignRecruitmentPage() {
           .map((item) => item.trim())
           .filter(Boolean)
           .slice(0, 6),
+        eligibilityRules: buildCampaignEligibilityRules(
+          form.eligibilityMinimums,
+          form.platforms,
+          form.naverEligibilityMode,
+        ),
         thumbnailUrl: form.thumbnailUrl.trim(),
         applicationContactFields: [...form.applicationContactFields].sort(),
         requiredConsents: form.requiredConsents.map((consent) => ({
@@ -1217,6 +1397,8 @@ export function AdvertiserCampaignRecruitmentPage() {
         deadline: "",
         uploadDeadline: "",
         deliverables: "",
+        eligibilityMinimums: createEmptyCampaignEligibilityMinimums(),
+        naverEligibilityMode: "",
         targetCountries: [],
         thumbnailUrl: "",
         applicationContactFields: [],
@@ -1254,6 +1436,11 @@ export function AdvertiserCampaignRecruitmentPage() {
       uploadDeadline: form.uploadDeadline.trim() || undefined,
       platforms,
       deliverables: parseCampaignDeliverables(form.deliverables),
+      eligibilityRules: buildCampaignEligibilityRules(
+        form.eligibilityMinimums,
+        form.platforms,
+        form.naverEligibilityMode,
+      ),
       applicationContactFields: form.applicationContactFields,
       requiredConsents: form.requiredConsents
         .map((consent) => ({ id: consent.id, text: consent.text.trim() }))
@@ -1513,6 +1700,33 @@ export function AdvertiserCampaignRecruitmentPage() {
                 onSelect={togglePlatform}
               />
             </CampaignField>
+
+            <CampaignEligibilityRuleEditor
+              selectedPlatforms={form.platforms}
+              minimums={form.eligibilityMinimums}
+              naverMode={form.naverEligibilityMode}
+              onChange={(platform, minimum) =>
+                setForm((current) => ({
+                  ...current,
+                  eligibilityMinimums: {
+                    ...current.eligibilityMinimums,
+                    [platform]: minimum,
+                  },
+                }))
+              }
+              onNaverModeChange={(mode) =>
+                setForm((current) => ({
+                  ...current,
+                  naverEligibilityMode: mode,
+                  eligibilityMinimums: {
+                    ...current.eligibilityMinimums,
+                    ...(mode === "average_daily_visitors_4d"
+                      ? {}
+                      : { naver_blog: "" }),
+                  },
+                }))
+              }
+            />
 
             <CampaignField label="광고형태">
               <CampaignFormSelectList
@@ -1881,6 +2095,8 @@ export function InfluencerCampaignDiscoveryPage() {
     useState<MarketplaceCampaignPost | null>(null);
   const [applicationConsentCampaign, setApplicationConsentCampaign] =
     useState<MarketplaceCampaignPost | null>(null);
+  const [naverInfluencerAttestationPrompt, setNaverInfluencerAttestationPrompt] =
+    useState<NaverInfluencerAttestationPrompt>();
   const handleActiveViewChange = (nextView: InfluencerCampaignView) => {
     const nextSearchParams = new URLSearchParams(searchParams);
     if (nextView === "applied") {
@@ -2253,14 +2469,20 @@ export function InfluencerCampaignDiscoveryPage() {
       (consent) => consent.id.trim() && consent.text.trim(),
     );
     const applicationContactFields = campaign.applicationContactFields ?? [];
-    if (requiredConsents.length === 0 && applicationContactFields.length === 0) {
+    if (
+      (campaign.eligibilityRules?.length ?? 0) === 0 &&
+      requiredConsents.length === 0 &&
+      applicationContactFields.length === 0
+    ) {
       void submitCampaignApplication(campaign, {
         acceptedConsentIds: [],
         applicationContact: {},
         applicationContactConsentAccepted: false,
+        eligibilityAccountIds: {},
       });
       return;
     }
+    setNaverInfluencerAttestationPrompt(undefined);
     setApplicationConsentCampaign(campaign);
   };
 
@@ -2299,6 +2521,11 @@ export function InfluencerCampaignDiscoveryPage() {
               submission.applicationContactConsentAccepted,
             applicationContactConsentVersion:
               campaign.applicationContactConsentVersion ?? "",
+            eligibilityAccountIds: submission.eligibilityAccountIds,
+            naverInfluencerProfileUrl:
+              submission.naverInfluencerProfileUrl,
+            naverInfluencerSelfAttestation:
+              submission.naverInfluencerSelfAttestation,
           }),
         },
       );
@@ -2306,13 +2533,27 @@ export function InfluencerCampaignDiscoveryPage() {
       const data = (await response.json().catch(() => ({}))) as
         | CampaignApplicationResponse
         | VerificationRequiredApiError
-        | CampaignApplicationStaleApiError;
+        | CampaignApplicationStaleApiError
+        | NaverInfluencerCheckUnavailableApiError;
 
       if (
         response.status === 409 &&
         isCampaignApplicationStaleError(data)
       ) {
         await reloadCampaignsAfterStaleApplication(campaign.id);
+        return;
+      }
+
+      const naverPrompt = readNaverInfluencerAttestationPrompt(data);
+      if (naverPrompt) {
+        setNaverInfluencerAttestationPrompt(naverPrompt);
+        setApplicationNotice({
+          campaignId: campaign.id,
+          tone: "error",
+          message:
+            ("error" in data ? data.error : undefined) ??
+            "공개 프로필 연결을 자동 확인하지 못했습니다. 본인 확인으로 신청을 계속할 수 있습니다.",
+        });
         return;
       }
 
@@ -2365,12 +2606,12 @@ export function InfluencerCampaignDiscoveryPage() {
           ? "이미 신청한 캠페인입니다. 광고주가 확인하면 선정자별 진행으로 이어집니다."
           : "신청이 전달됐습니다. 광고주가 선정하면 이 캠페인의 계약서 초안이 만들어집니다. 캠페인 계약서 진행이 시작됩니다.",
       });
+      setNaverInfluencerAttestationPrompt(undefined);
       setApplicationConsentCampaign(null);
       setSelectedCampaign(null);
       handleActiveViewChange("applied");
       void loadApplications();
     } catch (error) {
-      setApplicationConsentCampaign(null);
       setApplicationNotice({
         campaignId: campaign.id,
         tone: "error",
@@ -2726,7 +2967,7 @@ export function InfluencerCampaignDiscoveryPage() {
                 : "grid min-h-0 flex-1 auto-rows-max gap-x-3 gap-y-5 overflow-y-auto overscroll-contain bg-[#fbfaf7] p-3 sm:grid-cols-2 xl:grid-cols-3"
             }
           >
-            {applicationNotice ? (
+            {applicationNotice && !applicationConsentCampaign ? (
               <div
                 className={`flex flex-col gap-2 rounded-[12px] border px-3 py-2 text-[12px] font-extrabold sm:col-span-2 sm:flex-row sm:items-center sm:justify-between ${
                   isDesktopViewport ? "col-span-4" : "xl:col-span-3"
@@ -2773,7 +3014,17 @@ export function InfluencerCampaignDiscoveryPage() {
         <CampaignApplicationConsentDialog
           campaign={applicationConsentCampaign}
           isSubmitting={applyingCampaignId === applicationConsentCampaign.id}
-          onCancel={() => setApplicationConsentCampaign(null)}
+          naverInfluencerAttestationPrompt={naverInfluencerAttestationPrompt}
+          errorMessage={
+            applicationNotice?.tone === "error" &&
+            applicationNotice.campaignId === applicationConsentCampaign.id
+              ? applicationNotice.message
+              : undefined
+          }
+          onCancel={() => {
+            setNaverInfluencerAttestationPrompt(undefined);
+            setApplicationConsentCampaign(null);
+          }}
           onSubmit={(submission) =>
             submitCampaignApplication(
               applicationConsentCampaign,
@@ -2810,6 +3061,8 @@ export function PublicCampaignRecruitmentPage() {
   >();
   const [applicationConsentCampaign, setApplicationConsentCampaign] =
     useState<MarketplaceCampaignPost | null>(null);
+  const [naverInfluencerAttestationPrompt, setNaverInfluencerAttestationPrompt] =
+    useState<NaverInfluencerAttestationPrompt>();
   const [sessionStatus, setSessionStatus] = useState<
     "checking" | "anonymous" | "authenticated"
   >("checking");
@@ -2978,14 +3231,20 @@ export function PublicCampaignRecruitmentPage() {
       (consent) => consent.id.trim() && consent.text.trim(),
     );
     const applicationContactFields = campaign.applicationContactFields ?? [];
-    if (requiredConsents.length === 0 && applicationContactFields.length === 0) {
+    if (
+      (campaign.eligibilityRules?.length ?? 0) === 0 &&
+      requiredConsents.length === 0 &&
+      applicationContactFields.length === 0
+    ) {
       void submitCampaignApplication(campaign, {
         acceptedConsentIds: [],
         applicationContact: {},
         applicationContactConsentAccepted: false,
+        eligibilityAccountIds: {},
       });
       return;
     }
+    setNaverInfluencerAttestationPrompt(undefined);
     setApplicationConsentCampaign(campaign);
   };
 
@@ -3023,6 +3282,11 @@ export function PublicCampaignRecruitmentPage() {
               submission.applicationContactConsentAccepted,
             applicationContactConsentVersion:
               campaign.applicationContactConsentVersion ?? "",
+            eligibilityAccountIds: submission.eligibilityAccountIds,
+            naverInfluencerProfileUrl:
+              submission.naverInfluencerProfileUrl,
+            naverInfluencerSelfAttestation:
+              submission.naverInfluencerSelfAttestation,
           }),
         },
       );
@@ -3030,13 +3294,26 @@ export function PublicCampaignRecruitmentPage() {
       const data = (await response.json().catch(() => ({}))) as
         | CampaignApplicationResponse
         | VerificationRequiredApiError
-        | CampaignApplicationStaleApiError;
+        | CampaignApplicationStaleApiError
+        | NaverInfluencerCheckUnavailableApiError;
 
       if (
         response.status === 409 &&
         isCampaignApplicationStaleError(data)
       ) {
         await reloadPublicCampaignAfterStaleApplication(campaign.id);
+        return;
+      }
+
+      const naverPrompt = readNaverInfluencerAttestationPrompt(data);
+      if (naverPrompt) {
+        setNaverInfluencerAttestationPrompt(naverPrompt);
+        setApplicationNotice({
+          tone: "error",
+          message:
+            ("error" in data ? data.error : undefined) ??
+            "공개 프로필 연결을 자동 확인하지 못했습니다. 본인 확인으로 신청을 계속할 수 있습니다.",
+        });
         return;
       }
 
@@ -3087,9 +3364,9 @@ export function PublicCampaignRecruitmentPage() {
           ? "이미 신청한 캠페인입니다. 광고주가 확인하면 선정자별 진행으로 이어집니다."
           : "신청이 전달됐습니다. 광고주가 선정하면 이 캠페인의 계약서 초안이 만들어집니다.",
       });
+      setNaverInfluencerAttestationPrompt(undefined);
       setApplicationConsentCampaign(null);
     } catch (error) {
-      setApplicationConsentCampaign(null);
       setApplicationNotice({
         tone: "error",
         message:
@@ -3118,6 +3395,16 @@ export function PublicCampaignRecruitmentPage() {
           label: "콘텐츠",
           value: campaign.deliverables?.join(", ") || "가이드라인 확인",
         },
+        ...(campaign.eligibilityRules?.length
+          ? [
+              {
+                label: "지원 조건",
+                value: formatCampaignEligibilityRules(
+                  campaign.eligibilityRules,
+                ),
+              },
+            ]
+          : []),
       ]
     : [];
   const currentSharePath =
@@ -3324,11 +3611,12 @@ export function PublicCampaignRecruitmentPage() {
                     </div>
                   ))}
                 </dl>
+                <CampaignNaverEligibilityNotice campaign={campaign} className="mt-3" />
               </section>
             </div>
 
             <div className="border-t border-neutral-200 bg-white p-3 sm:flex sm:items-center sm:justify-between sm:gap-3 sm:px-6">
-              {applicationNotice ? (
+              {applicationNotice && !applicationConsentCampaign ? (
                 <div
                   className={`mb-3 flex flex-col gap-2 break-keep rounded-[8px] border px-3 py-2 text-[12px] font-extrabold leading-5 sm:mb-0 sm:flex-row sm:items-center ${
                     applicationNotice.tone === "success"
@@ -3378,7 +3666,16 @@ export function PublicCampaignRecruitmentPage() {
         <CampaignApplicationConsentDialog
           campaign={applicationConsentCampaign}
           isSubmitting={applyingCampaignId === applicationConsentCampaign.id}
-          onCancel={() => setApplicationConsentCampaign(null)}
+          naverInfluencerAttestationPrompt={naverInfluencerAttestationPrompt}
+          errorMessage={
+            applicationNotice?.tone === "error"
+              ? applicationNotice.message
+              : undefined
+          }
+          onCancel={() => {
+            setNaverInfluencerAttestationPrompt(undefined);
+            setApplicationConsentCampaign(null);
+          }}
           onSubmit={(submission) =>
             submitCampaignApplication(
               applicationConsentCampaign,
@@ -3670,6 +3967,165 @@ function CampaignField({
       <span className="text-[13px] font-extrabold text-neutral-800">{label}</span>
       {children}
     </div>
+  );
+}
+
+function CampaignEligibilityRuleEditor({
+  selectedPlatforms,
+  minimums,
+  naverMode,
+  onChange,
+  onNaverModeChange,
+}: {
+  selectedPlatforms: readonly InfluencerPlatform[];
+  minimums: CampaignEligibilityMinimums;
+  naverMode: "" | NaverCampaignEligibilityMode;
+  onChange: (platform: CampaignEligibilityPlatform, minimum: string) => void;
+  onNaverModeChange: (mode: "" | NaverCampaignEligibilityMode) => void;
+}) {
+  const availablePlatforms = campaignEligibilityPlatforms.filter((platform) =>
+    selectedPlatforms.includes(platform),
+  );
+
+  return (
+    <CampaignField label="지원 조건 (선택)">
+      <div className="rounded-[12px] border border-neutral-200 bg-neutral-50 p-3">
+        {availablePlatforms.length > 0 ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {availablePlatforms.map((platform) => {
+              const policy = campaignEligibilityPolicy[platform];
+              const inputId = `campaign-eligibility-${platform}`;
+              if (platform === "naver_blog") {
+                const modes: Array<{
+                  value: "" | NaverCampaignEligibilityMode;
+                  label: string;
+                }> = [
+                  { value: "", label: "조건 없음" },
+                  { value: "naver_influencer", label: "인플루언서" },
+                  {
+                    value: "average_daily_visitors_4d",
+                    label: "일방문자 수",
+                  },
+                ];
+                return (
+                  <div
+                    key={platform}
+                    className="grid min-w-0 gap-2 sm:col-span-2"
+                  >
+                    <span className="flex items-center gap-2 text-[12px] font-extrabold text-neutral-700">
+                      <PlatformBrandMark platform="naver_blog" size="sm" />
+                      네이버 블로그 조건
+                    </span>
+                    <div
+                      role="radiogroup"
+                      aria-label="네이버 블로그 지원 조건"
+                      className="grid grid-cols-3 gap-1.5"
+                    >
+                      {modes.map((mode) => {
+                        const selected = naverMode === mode.value;
+                        return (
+                          <button
+                            key={mode.value || "none"}
+                            type="button"
+                            role="radio"
+                            aria-checked={selected}
+                            onClick={() => onNaverModeChange(mode.value)}
+                            className={`min-h-9 rounded-[8px] border px-2 text-[12px] font-extrabold transition ${
+                              selected
+                                ? "border-blue-300 bg-blue-50 text-blue-800"
+                                : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
+                            }`}
+                          >
+                            {mode.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {naverMode === "average_daily_visitors_4d" ? (
+                      <label
+                        htmlFor={inputId}
+                        className="grid gap-1.5 text-[12px] font-extrabold text-neutral-700"
+                      >
+                        최근 완료 4일 최소 일평균 방문자 수
+                        <div className="relative sm:max-w-[320px]">
+                          <input
+                            id={inputId}
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            maxLength={10}
+                            value={minimums.naver_blog}
+                            onChange={(event) =>
+                              onChange(
+                                "naver_blog",
+                                event.target.value
+                                  .replace(/\D/g, "")
+                                  .replace(/^0+(?=\d)/, "")
+                                  .slice(0, 10),
+                              )
+                            }
+                            placeholder="예: 100"
+                            aria-label="최근 완료 4일 최소 일평균 방문자 수"
+                            className="campaign-input pr-12"
+                          />
+                          <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[12px] font-extrabold text-neutral-500">
+                            명
+                          </span>
+                        </div>
+                      </label>
+                    ) : null}
+                  </div>
+                );
+              }
+              return (
+                <label
+                  key={platform}
+                  htmlFor={inputId}
+                  className="grid min-w-0 gap-1.5 text-[12px] font-extrabold text-neutral-700"
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <PlatformBrandMark platform={platform} size="sm" />
+                    <span className="truncate">{policy.inputLabel}</span>
+                  </span>
+                  <div className="relative">
+                    <input
+                      id={inputId}
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={10}
+                      value={minimums[platform]}
+                      onChange={(event) =>
+                        onChange(
+                          platform,
+                          event.target.value
+                            .replace(/\D/g, "")
+                            .replace(/^0+(?=\d)/, "")
+                            .slice(0, 10),
+                        )
+                      }
+                      placeholder="예: 1000"
+                      aria-label={`${policy.label} 최소 인원`}
+                      className="campaign-input pr-12"
+                    />
+                    <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[12px] font-extrabold text-neutral-500">
+                      명
+                    </span>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-[12px] font-bold leading-5 text-neutral-500">
+            인스타그램, 유튜브 또는 네이버 블로그를 선택하면 지원 조건을 설정할 수 있습니다.
+          </p>
+        )}
+        <p className="mt-2 break-keep text-[11px] font-bold leading-5 text-neutral-500">
+          입력한 조건을 모두 충족한 인증 계정만 신청할 수 있습니다. 조건 없음은 계정 인증만 확인합니다.
+        </p>
+      </div>
+    </CampaignField>
   );
 }
 
@@ -4889,6 +5345,27 @@ function CampaignApplicationStats({
   );
 }
 
+function CampaignNaverEligibilityNotice({
+  campaign,
+  className = "",
+}: {
+  campaign: Pick<MarketplaceBrandCampaign, "eligibilityRules">;
+  className?: string;
+}) {
+  const naverRule = campaign.eligibilityRules?.find(
+    (rule) => rule.platform === "naver_blog",
+  );
+  if (!naverRule) return null;
+
+  return (
+    <p className={`break-keep text-[11px] font-bold leading-5 text-neutral-500 ${className}`}>
+      {naverRule.metric === "naver_influencer"
+        ? "승인된 네이버 블로그와 인플루언서 홈의 공개 연결을 신청할 때 확인합니다."
+        : "네이버 블로그는 방문자 수 카운터를 공개하면 신청할 때 자동으로 확인됩니다."}
+    </p>
+  );
+}
+
 function CampaignCardMetaChips({
   campaign,
 }: {
@@ -4964,15 +5441,40 @@ function CampaignCardDeadlineStrip({
 function CampaignApplicationConsentDialog({
   campaign,
   isSubmitting,
+  errorMessage,
+  naverInfluencerAttestationPrompt,
   onCancel,
   onSubmit,
 }: {
   campaign: MarketplaceCampaignPost;
   isSubmitting: boolean;
+  errorMessage?: string;
+  naverInfluencerAttestationPrompt?: NaverInfluencerAttestationPrompt;
   onCancel: () => void;
   onSubmit: (submission: CampaignApplicationSubmission) => void;
 }) {
   useBodyScrollLock(true);
+  const eligibilityRules = useMemo(
+    () => campaign.eligibilityRules ?? [],
+    [campaign.eligibilityRules],
+  );
+  const liveEligibilityLabels = eligibilityRules
+    .filter((rule) => rule.platform === "youtube")
+    .map((rule) => campaignEligibilityPolicy[rule.platform].label)
+    .join("·");
+  const hasInstagramFollowerEligibility = eligibilityRules.some(
+    (rule) =>
+      rule.platform === "instagram" && rule.metric === "followers",
+  );
+  const hasNaverVisitorEligibility = eligibilityRules.some(
+    (rule) =>
+      rule.platform === "naver_blog" &&
+      rule.metric === "average_daily_visitors_4d",
+  );
+  const hasNaverInfluencerEligibility = eligibilityRules.some(
+    (rule) =>
+      rule.platform === "naver_blog" && rule.metric === "naver_influencer",
+  );
   const requiredConsents = (campaign.requiredConsents ?? []).filter(
     (consent) => consent.id.trim() && consent.text.trim(),
   );
@@ -4987,6 +5489,166 @@ function CampaignApplicationConsentDialog({
   const [email, setEmail] = useState("");
   const [applicationContactConsentAccepted, setApplicationContactConsentAccepted] =
     useState(false);
+  const [eligibilityAccountIds, setEligibilityAccountIds] = useState<
+    Partial<Record<CampaignEligibilityPlatform, string>>
+  >({});
+  const [eligibilityAccountsState, setEligibilityAccountsState] = useState<
+    | { status: "idle" | "loading" | "unauthorized" }
+    | { status: "ready"; accounts: ApprovedInfluencerPlatform[] }
+    | { status: "error"; message: string }
+  >(eligibilityRules.length > 0 ? { status: "loading" } : { status: "idle" });
+  const [eligibilityReloadKey, setEligibilityReloadKey] = useState(0);
+  const [naverInfluencerProfileUrls, setNaverInfluencerProfileUrls] = useState<
+    Record<string, string>
+  >({});
+  const [acceptedNaverAttestationChallenge, setAcceptedNaverAttestationChallenge] =
+    useState<string | null>(null);
+  const [refreshingInstagramAccountId, setRefreshingInstagramAccountId] =
+    useState<string>();
+  const [instagramRefreshError, setInstagramRefreshError] = useState<string>();
+
+  useEffect(() => {
+    if (eligibilityRules.length === 0) return;
+    const controller = new AbortController();
+    void apiFetch("/api/verification/status?role=influencer", {
+      credentials: "include",
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (response.status === 401) {
+          setEligibilityAccountsState({ status: "unauthorized" });
+          return;
+        }
+        const data = (await response.json().catch(() => ({}))) as
+          | VerificationSummary
+          | { error?: string };
+        if (!response.ok || !("influencer" in data)) {
+          throw new Error(
+            "error" in data
+              ? data.error ?? "인증 계정을 불러오지 못했습니다."
+              : "인증 계정을 불러오지 못했습니다.",
+          );
+        }
+        const seen = new Set<string>();
+        const accounts = (data.influencer.approved_platforms ?? []).filter(
+          (account) => {
+            if (!account.request_id || !account.handle) return false;
+            const key = `${account.platform}:${account.handle
+              .trim()
+              .replace(/^@+/, "")
+              .toLowerCase()}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          },
+        );
+        setEligibilityAccountsState({ status: "ready", accounts });
+        setEligibilityAccountIds((current) => {
+          const next = { ...current };
+          for (const rule of eligibilityRules) {
+            const candidates = accounts.filter(
+              (account) => account.platform === rule.platform,
+            );
+            if (candidates.length === 1) {
+              next[rule.platform] = candidates[0].request_id;
+            }
+          }
+          return next;
+        });
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        setEligibilityAccountsState({
+          status: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "인증 계정을 불러오지 못했습니다.",
+        });
+      });
+    return () => controller.abort();
+  }, [campaign.id, eligibilityReloadKey, eligibilityRules]);
+  const selectedInstagramAccount =
+    eligibilityAccountsState.status === "ready"
+      ? eligibilityAccountsState.accounts.find(
+          (account) =>
+            account.platform === "instagram" &&
+            account.request_id === eligibilityAccountIds.instagram,
+        )
+      : undefined;
+  const refreshInstagramFollower = async (
+    account: ApprovedInfluencerPlatform,
+  ) => {
+    if (refreshingInstagramAccountId) return;
+    setRefreshingInstagramAccountId(account.request_id);
+    setInstagramRefreshError(undefined);
+    try {
+      const response = await apiFetch(
+        `/api/influencer/verification/instagram/${encodeURIComponent(
+          account.request_id,
+        )}/followers/refresh`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+      const data = (await response.json().catch(() => ({}))) as
+        | { instagram_follower?: ApprovedInfluencerPlatform["instagram_follower"] }
+        | { error?: string };
+      if (!response.ok || !("instagram_follower" in data) || !data.instagram_follower) {
+        throw new Error(
+          "error" in data
+            ? data.error ?? "최신 팔로워 수를 확인하지 못했습니다."
+            : "최신 팔로워 수를 확인하지 못했습니다.",
+        );
+      }
+      const instagramFollower = data.instagram_follower;
+      setEligibilityAccountsState((current) =>
+        current.status === "ready"
+          ? {
+              status: "ready",
+              accounts: current.accounts.map((candidate) =>
+                candidate.request_id === account.request_id
+                  ? {
+                      ...candidate,
+                      instagram_follower: instagramFollower,
+                    }
+                  : candidate,
+              ),
+            }
+          : current,
+      );
+    } catch (error) {
+      setInstagramRefreshError(
+        error instanceof Error
+          ? error.message
+          : "최신 팔로워 수를 확인하지 못했습니다.",
+      );
+    } finally {
+      setRefreshingInstagramAccountId(undefined);
+    }
+  };
+  const selectedNaverAccount =
+    eligibilityAccountsState.status === "ready"
+      ? eligibilityAccountsState.accounts.find(
+          (account) =>
+            account.platform === "naver_blog" &&
+            account.request_id === eligibilityAccountIds.naver_blog,
+        )
+      : undefined;
+  const selectedNaverCredential = selectedNaverAccount?.naver_influencer;
+  const selectedNaverCredentialActive =
+    selectedNaverCredential?.status === "active";
+  const selectedNaverAccountId = selectedNaverAccount?.request_id ?? "";
+  const naverInfluencerProfileUrl = naverInfluencerAttestationPrompt
+    ? naverInfluencerAttestationPrompt.profileUrl
+    : selectedNaverAccountId
+      ? (naverInfluencerProfileUrls[selectedNaverAccountId] ??
+        selectedNaverCredential?.profile_url ??
+        "")
+      : "";
   const acceptedConsentIdSet = new Set(acceptedConsentIds);
   const allCustomConsentsAccepted = requiredConsents.every((consent) =>
     acceptedConsentIdSet.has(consent.id),
@@ -5000,10 +5662,40 @@ function CampaignApplicationConsentDialog({
   const emailValid =
     !collectsEmail || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const hasApplicationContact = applicationContactFields.length > 0;
+  const normalizedNaverInfluencerProfileUrl =
+    naverInfluencerProfileUrl.trim();
+  const naverInfluencerProfileValid =
+    !hasNaverInfluencerEligibility ||
+    selectedNaverCredentialActive ||
+    /^https:\/\/in\.naver\.com\/[a-z0-9._-]{2,64}$/i.test(
+      normalizedNaverInfluencerProfileUrl,
+    );
+  const naverSelfAttestationAccepted = Boolean(
+    naverInfluencerAttestationPrompt &&
+      acceptedNaverAttestationChallenge ===
+        naverInfluencerAttestationPrompt.challenge,
+  );
+  const naverSelfAttestationComplete =
+    !naverInfluencerAttestationPrompt || naverSelfAttestationAccepted;
+  const instagramFollowerReady =
+    !hasInstagramFollowerEligibility ||
+    eligibilityAccountsState.status === "unauthorized" ||
+    Boolean(selectedInstagramAccount?.instagram_follower);
+  const eligibilityAccountsComplete =
+    eligibilityRules.length === 0 ||
+    eligibilityAccountsState.status === "unauthorized" ||
+    (eligibilityAccountsState.status === "ready" &&
+      eligibilityRules.every((rule) =>
+        Boolean(eligibilityAccountIds[rule.platform]),
+      ));
   const allAccepted =
     allCustomConsentsAccepted &&
     phoneValid &&
     emailValid &&
+    eligibilityAccountsComplete &&
+    instagramFollowerReady &&
+    naverInfluencerProfileValid &&
+    naverSelfAttestationComplete &&
     (!hasApplicationContact || applicationContactConsentAccepted);
 
   return (
@@ -5017,7 +5709,7 @@ function CampaignApplicationConsentDialog({
         type="button"
         className="absolute inset-0 cursor-default"
         onClick={isSubmitting ? undefined : onCancel}
-        aria-label="신청 동의 닫기"
+        aria-label="신청 확인 닫기"
       />
       <section className="relative flex max-h-[calc(100svh-16px)] w-full max-w-[620px] flex-col overflow-hidden rounded-t-[16px] bg-white shadow-[0_28px_90px_rgba(15,23,42,0.32)] sm:max-h-[calc(100svh-32px)] sm:rounded-[16px]">
         <header className="flex items-start justify-between gap-3 border-b border-neutral-200 px-4 py-4 sm:px-5">
@@ -5029,7 +5721,7 @@ function CampaignApplicationConsentDialog({
               id="campaign-consent-title"
               className="mt-1 text-[20px] font-black text-neutral-950"
             >
-              신청 전 필수 동의
+              신청 전 확인
             </h2>
           </div>
           <button
@@ -5046,6 +5738,263 @@ function CampaignApplicationConsentDialog({
 
         <div className="min-h-0 flex-1 overflow-y-auto bg-[#fbfaf7] p-3 sm:p-5">
           <div className="grid gap-2.5">
+            {eligibilityRules.length > 0 ? (
+              <article className="rounded-[12px] border border-neutral-200 bg-white p-3 sm:p-4">
+                <p className="text-[11px] font-extrabold text-neutral-400">
+                  지원 조건
+                </p>
+                <div className="mt-3 grid gap-3">
+                  {eligibilityRules.map((rule) => {
+                    const accounts =
+                      eligibilityAccountsState.status === "ready"
+                        ? eligibilityAccountsState.accounts.filter(
+                            (account) => account.platform === rule.platform,
+                          )
+                        : [];
+                    const selectedAccountId = eligibilityAccountIds[rule.platform] ?? "";
+                    const selectedAccount = accounts.find(
+                      (account) => account.request_id === selectedAccountId,
+                    );
+                    return (
+                      <div
+                        key={rule.platform}
+                        className="grid gap-2 rounded-[10px] border border-neutral-200 bg-neutral-50 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(180px,0.75fr)] sm:items-center"
+                      >
+                        <div className="min-w-0">
+                          <p className="flex items-center gap-2 text-[12px] font-extrabold text-neutral-900">
+                            <PlatformBrandMark platform={rule.platform} size="sm" />
+                            <span>{formatCampaignEligibilityRule(rule)}</span>
+                          </p>
+                        </div>
+                        {eligibilityAccountsState.status === "loading" ? (
+                          <p className="text-[12px] font-bold text-neutral-500">
+                            인증 계정 확인 중
+                          </p>
+                        ) : eligibilityAccountsState.status === "unauthorized" ? (
+                          <p className="text-[12px] font-bold text-neutral-500">
+                            로그인 후 인증 계정을 확인합니다.
+                          </p>
+                        ) : eligibilityAccountsState.status === "error" ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEligibilityAccountsState({ status: "loading" });
+                              setEligibilityReloadKey((current) => current + 1);
+                            }}
+                            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-[8px] border border-neutral-300 bg-white px-3 text-[12px] font-extrabold text-neutral-700"
+                          >
+                            <RefreshCw className="h-3.5 w-3.5" />
+                            다시 불러오기
+                          </button>
+                        ) : accounts.length === 0 ? (
+                          <Link
+                            to="/influencer/verification"
+                            className="inline-flex h-9 items-center justify-center rounded-[8px] border border-blue-200 bg-blue-50 px-3 text-[12px] font-extrabold text-blue-700"
+                          >
+                            계정 인증하기
+                          </Link>
+                        ) : accounts.length === 1 ? (
+                          <p className="truncate rounded-[8px] border border-neutral-200 bg-white px-3 py-2 text-[12px] font-extrabold text-neutral-700">
+                            @{accounts[0].handle.replace(/^@+/, "")}
+                          </p>
+                        ) : (
+                          <select
+                            value={selectedAccountId}
+                            disabled={Boolean(naverInfluencerAttestationPrompt)}
+                            onChange={(event) => {
+                              if (rule.platform === "instagram") {
+                                setInstagramRefreshError(undefined);
+                              }
+                              setEligibilityAccountIds((current) => ({
+                                ...current,
+                                [rule.platform]: event.target.value,
+                              }));
+                            }}
+                            aria-label={`${platformLabels[rule.platform]} 인증 계정`}
+                            className="campaign-input h-9 py-0 text-[12px]"
+                          >
+                            <option value="">인증 계정 선택</option>
+                            {accounts.map((account) => (
+                              <option key={account.request_id} value={account.request_id}>
+                                @{account.handle.replace(/^@+/, "")}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                        {rule.platform === "instagram" && selectedAccount ? (
+                          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 border-t border-neutral-200 pt-2 sm:col-span-2">
+                            <p className="min-w-0 text-[11px] font-bold text-neutral-600">
+                              {selectedAccount.instagram_follower ? (
+                                <>
+                                  팔로워{" "}
+                                  <strong className="font-extrabold text-neutral-900">
+                                    {selectedAccount.instagram_follower.count.toLocaleString(
+                                      "ko-KR",
+                                    )}
+                                    명
+                                  </strong>
+                                  {" · "}
+                                  {formatCampaignMetricCheckedAt(
+                                    selectedAccount.instagram_follower.checked_at,
+                                  )}{" "}
+                                  확인
+                                </>
+                              ) : (
+                                "신청 전에 팔로워 수 확인이 필요합니다."
+                              )}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void refreshInstagramFollower(selectedAccount)
+                              }
+                              disabled={Boolean(refreshingInstagramAccountId)}
+                              className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-[8px] border border-neutral-300 bg-white px-2.5 text-[11px] font-extrabold text-neutral-700 transition hover:border-neutral-400 disabled:cursor-wait disabled:opacity-50"
+                            >
+                              <RefreshCw
+                                className={`h-3.5 w-3.5 ${
+                                  refreshingInstagramAccountId ===
+                                  selectedAccount.request_id
+                                    ? "animate-spin"
+                                    : ""
+                                }`}
+                              />
+                              최신 수치 확인
+                            </button>
+                            {instagramRefreshError ? (
+                              <p className="w-full break-keep text-[11px] font-bold leading-5 text-rose-600">
+                                {instagramRefreshError}
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+                {hasNaverInfluencerEligibility && selectedNaverAccount ? (
+                  <div className="mt-3 rounded-[10px] border border-neutral-200 bg-[#fbfaf7] p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-[12px] font-extrabold text-neutral-900">
+                        네이버 인플루언서 확인
+                      </p>
+                      {selectedNaverCredentialActive ? (
+                        <span
+                          className={`inline-flex h-6 items-center rounded-full border px-2 text-[10px] font-extrabold ${
+                            selectedNaverCredential?.evidence_type ===
+                            "auto_verified"
+                              ? "border-blue-200 bg-blue-50 text-blue-700"
+                              : "border-neutral-300 bg-white text-neutral-700"
+                          }`}
+                        >
+                          {selectedNaverCredential?.evidence_type ===
+                          "auto_verified"
+                            ? "자동 확인됨"
+                            : "본인 확인 · 직접 확인 필요"}
+                        </span>
+                      ) : (
+                        <span className="inline-flex h-6 items-center rounded-full border border-neutral-300 bg-white px-2 text-[10px] font-extrabold text-neutral-600">
+                          신청 시 확인
+                        </span>
+                      )}
+                    </div>
+
+                    {selectedNaverCredentialActive ? (
+                      <div className="mt-2 flex min-w-0 items-center gap-2 text-[11px] font-bold text-neutral-600">
+                        <a
+                          href={selectedNaverCredential?.profile_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="truncate text-blue-700 underline underline-offset-2"
+                        >
+                          {selectedNaverCredential?.profile_url}
+                        </a>
+                        <span className="shrink-0">
+                          {selectedNaverCredential?.evidence_type ===
+                          "auto_verified"
+                            ? "1년간 자동 확인"
+                            : "1년간 본인 확인 재사용"}
+                        </span>
+                      </div>
+                    ) : (
+                      <label className="mt-2 grid gap-1.5 text-[11px] font-extrabold text-neutral-700">
+                        네이버 인플루언서 홈 주소
+                        <input
+                          type="url"
+                          inputMode="url"
+                          autoComplete="url"
+                          value={naverInfluencerProfileUrl}
+                          onChange={(event) => {
+                            if (!selectedNaverAccountId) return;
+                            const nextUrl = event.target.value;
+                            setNaverInfluencerProfileUrls((current) => ({
+                              ...current,
+                              [selectedNaverAccountId]: nextUrl,
+                            }));
+                          }}
+                          readOnly={Boolean(naverInfluencerAttestationPrompt)}
+                          placeholder="https://in.naver.com/아이디"
+                          className="campaign-input text-[12px]"
+                          aria-invalid={
+                            normalizedNaverInfluencerProfileUrl.length > 0 &&
+                            !naverInfluencerProfileValid
+                          }
+                        />
+                        {normalizedNaverInfluencerProfileUrl.length > 0 &&
+                        !naverInfluencerProfileValid ? (
+                          <span className="text-rose-600">
+                            https://in.naver.com/아이디 형식으로 입력해 주세요.
+                          </span>
+                        ) : (
+                          <span className="font-bold text-neutral-500">
+                            선택한 인증 블로그와 공개 프로필의 연결을 확인합니다.
+                          </span>
+                        )}
+                      </label>
+                    )}
+
+                    {naverInfluencerAttestationPrompt ? (
+                      <label className="mt-3 flex cursor-pointer items-start gap-2.5 rounded-[8px] border border-amber-200 bg-amber-50/70 p-3">
+                        <input
+                          type="checkbox"
+                          checked={naverSelfAttestationAccepted}
+                          onChange={(event) =>
+                            setAcceptedNaverAttestationChallenge(
+                              event.target.checked
+                                ? naverInfluencerAttestationPrompt.challenge
+                                : null,
+                            )
+                          }
+                          className="mt-0.5 h-4 w-4 rounded border-neutral-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="break-keep text-[11px] font-bold leading-5 text-neutral-700">
+                          네이버 인플루언서가 맞습니다. 공개 프로필 주소와 본인
+                          확인은 1년간 보관되며, 신청한 캠페인 광고주에게 직접
+                          확인용으로 제공됩니다.
+                        </span>
+                      </label>
+                    ) : null}
+                  </div>
+                ) : null}
+                {liveEligibilityLabels ? (
+                  <p className="mt-3 break-keep text-[11px] font-bold leading-5 text-neutral-500">
+                    {liveEligibilityLabels}는 신청할 때 공식 API 최신값을 확인합니다.
+                  </p>
+                ) : null}
+                {hasNaverVisitorEligibility ? (
+                  <p className="mt-1 break-keep text-[11px] font-bold leading-5 text-neutral-500">
+                    네이버 블로그는 방문자 수 카운터를 공개하면 자동 확인되며,
+                    최근 완료 4일 평균과 확인 시각은 30일간 비공개로 보관합니다.
+                  </p>
+                ) : null}
+                {hasNaverInfluencerEligibility ? (
+                  <p className="mt-1 break-keep text-[11px] font-bold leading-5 text-neutral-500">
+                    자동 확인 결과와 본인 확인 여부는 광고주에게 구분되어
+                    전달됩니다.
+                  </p>
+                ) : null}
+              </article>
+            ) : null}
             {hasApplicationContact ? (
               <article className="rounded-[12px] border border-neutral-200 bg-white p-3 sm:p-4">
                 <p className="text-[11px] font-extrabold text-neutral-400">
@@ -5183,9 +6132,24 @@ function CampaignApplicationConsentDialog({
         </div>
 
         <footer className="shrink-0 border-t border-neutral-200 bg-white p-3 sm:flex sm:items-center sm:justify-between sm:gap-3 sm:px-5 sm:py-4">
-          <p className="mb-3 text-[12px] font-extrabold text-neutral-500 sm:mb-0">
-            {allAccepted ? "필수 확인 완료" : "필수 입력과 동의를 확인해 주세요."}
-          </p>
+          {errorMessage ? (
+            <p
+              className={`mb-3 max-w-[360px] break-keep text-[12px] font-extrabold leading-5 sm:mb-0 ${
+                naverInfluencerAttestationPrompt
+                  ? "text-amber-800"
+                  : "text-rose-600"
+              }`}
+              role={naverInfluencerAttestationPrompt ? "status" : "alert"}
+            >
+              {errorMessage}
+            </p>
+          ) : (
+            <p className="mb-3 text-[12px] font-extrabold text-neutral-500 sm:mb-0">
+              {allAccepted
+                ? "필수 확인 완료"
+                : "필수 입력과 동의를 확인해 주세요."}
+            </p>
+          )}
           <button
             type="button"
             disabled={!allAccepted || isSubmitting}
@@ -5198,6 +6162,23 @@ function CampaignApplicationConsentDialog({
                 },
                 applicationContactConsentAccepted:
                   hasApplicationContact && applicationContactConsentAccepted,
+                eligibilityAccountIds,
+                ...(hasNaverInfluencerEligibility
+                  ? {
+                      naverInfluencerProfileUrl:
+                        normalizedNaverInfluencerProfileUrl || undefined,
+                    }
+                  : {}),
+                ...(naverInfluencerAttestationPrompt &&
+                naverSelfAttestationAccepted
+                  ? {
+                      naverInfluencerSelfAttestation: {
+                        accepted: true,
+                        challenge:
+                          naverInfluencerAttestationPrompt.challenge,
+                      } as const,
+                    }
+                  : {}),
               })
             }
             className="yl-primary-action inline-flex h-11 w-full items-center justify-center gap-2 rounded-[8px] px-5 text-[13px] font-extrabold disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-500 disabled:hover:bg-neutral-300 sm:w-[180px]"
@@ -5228,6 +6209,9 @@ function CampaignRecruitmentDetailDialog({
   const campaignCopy = getCampaignDisplayCopy(campaign);
   const facts = getCampaignRecruitmentFacts(campaign);
   const targetCountryLabel = formatMarketplaceCountries(campaign.targetCountries);
+  const eligibilityLabel = formatCampaignEligibilityRules(
+    campaign.eligibilityRules,
+  );
   const detailRows = [
     ...(targetCountryLabel
       ? [{ label: "국가", value: targetCountryLabel }]
@@ -5263,6 +6247,15 @@ function CampaignRecruitmentDetailDialog({
         value: formatCampaignApplicationStats(campaign),
         className: "col-span-2",
       },
+      ...(eligibilityLabel
+        ? [
+            {
+              label: "지원 조건",
+              value: eligibilityLabel,
+              className: "col-span-4",
+            },
+          ]
+        : []),
     ];
 
     return (
@@ -5329,6 +6322,7 @@ function CampaignRecruitmentDetailDialog({
                   </div>
                 ))}
               </dl>
+              <CampaignNaverEligibilityNotice campaign={campaign} className="mt-3" />
               <section className="mt-6 min-w-0">
                 <h3 className="text-[14px] font-black text-neutral-950">
                   가이드라인
@@ -5416,6 +6410,20 @@ function CampaignRecruitmentDetailDialog({
                   />
                 ))}
               </div>
+              {eligibilityLabel ? (
+                <div className="mt-4 border-t border-neutral-200 pt-4">
+                  <p className="text-[11px] font-extrabold text-neutral-400">
+                    지원 조건
+                  </p>
+                  <p className="mt-1 break-keep text-[13px] font-extrabold leading-6 text-neutral-900">
+                    {eligibilityLabel}
+                  </p>
+                  <CampaignNaverEligibilityNotice
+                    campaign={campaign}
+                    className="mt-2"
+                  />
+                </div>
+              ) : null}
             </div>
           </div>
           <div className="grid gap-5 border-t border-neutral-200 p-4 sm:p-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(220px,0.6fr)] lg:items-start">

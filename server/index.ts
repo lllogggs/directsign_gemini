@@ -17,6 +17,7 @@ import {
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { fileURLToPath } from "node:url";
+import { waitUntil } from "@vercel/functions";
 import {
   extractInstagramDmChallengeEvents,
   isActionableInstagramDmManualReview,
@@ -30,13 +31,33 @@ import {
   type InstagramDmChallengeEvent,
 } from "./instagram-dm-verification.js";
 import {
+  fetchInstagramBusinessFollowerMetric,
+  fetchInstagramReelPublicMetrics,
+  normalizeInstagramReelUrl,
+  readTrustedInstagramChannelFollowerMetric,
+  readTrustedInstagramDmFollowerMetric,
+  selectLatestInstagramFollowerMetric,
+  type InstagramReelPublicMetrics,
+  type TrustedInstagramFollowerMetric,
+} from "./instagram-campaign-metrics.js";
+import {
   bindOwnershipStatusToSubmittedIdentity,
-  buildNaverBlogSelfReportedChannelMetric,
   buildVerifiedPlatformChannelMetric,
   normalizeVerificationMetricCount,
   shouldInvalidateApprovedPlatformChannelCache,
 } from "./platform-verification-metrics.js";
 import { isExpectedCampaignRevisionCurrent } from "./campaign-application-revision.js";
+import {
+  fetchNaverBlogVisitorMetric,
+  type NaverBlogVisitorMetricResult,
+} from "./naver-blog-visitor-metric.js";
+import {
+  checkNaverInfluencerProfileConnection,
+  normalizeNaverBlogIdentity,
+  normalizeNaverInfluencerProfile,
+  normalizeNaverInfluencerProfileUrl,
+  type NaverInfluencerProfileCheckResult,
+} from "./naver-influencer-credential.js";
 import { isOperationalTestEmail } from "./operational-test-email.js";
 import { sendPlatformVerificationEmail } from "./verification-email.js";
 import { verificationRequestBelongsToInfluencerAccount } from "./verification-ownership.js";
@@ -126,6 +147,14 @@ import {
   getCampaignTitleValidationError,
   normalizeCampaignTitle,
 } from "../src/domain/campaignPresentation.js";
+import {
+  formatCampaignEligibilityRule,
+  formatCampaignEligibilityRules,
+  normalizeCampaignEligibilityRules,
+  validateCampaignEligibilityRules,
+  type CampaignEligibilityPlatform,
+  type CampaignEligibilityRule,
+} from "../src/domain/campaignEligibility.js";
 import {
   normalizeMarketplaceCreatorCategory,
   normalizeMarketplaceCreatorCategories,
@@ -606,6 +635,9 @@ const ownershipVerifierUserAgent = "yeollock-ownership-verifier/1.0";
 const metaInstagramAccessToken = readConfiguredServerSecret(
   "META_INSTAGRAM_ACCESS_TOKEN",
 );
+const metaBusinessDiscoveryAccessToken =
+  readConfiguredServerSecret("META_GRAPH_ACCESS_TOKEN") ??
+  metaInstagramAccessToken;
 const metaInstagramAccessTokenExpiresAt =
   process.env.META_INSTAGRAM_ACCESS_TOKEN_EXPIRES_AT?.trim() || undefined;
 const instagramDmAutoApproveEnabled =
@@ -698,7 +730,7 @@ const productName =
     ? "연락미"
     : normalizedConfiguredProductName;
 const signupTermsVersion = "2026-06-02";
-const signupPrivacyPolicyVersion = "2026-08-08.3";
+const signupPrivacyPolicyVersion = "2026-08-11.2";
 const signedPdfFontCandidates = [
   process.env.SIGNED_PDF_FONT_PATH,
   path.join(root, "public", "fonts", "NanumMyeongjo-Regular.ttf"),
@@ -1941,10 +1973,6 @@ interface MarketplaceRegisteredInfluencerDirectoryItem {
     handle: string;
     url?: string;
     followerCount?: number;
-    metricType?: "average_daily_visitors_4d";
-    metricSource?: "creator_self_report";
-    metricTrust?: "self_reported";
-    metricPeriodDays?: 4;
   }>;
   maxAudienceCount?: number;
   registeredMemberVisibility: "authenticated_advertisers";
@@ -2150,6 +2178,7 @@ interface SupabaseMarketplaceContactProposalRow {
   campaign_snapshot?: MarketplaceCampaignSnapshot | null;
   application_consent_snapshot?: MarketplaceApplicationConsentSnapshot | null;
   application_contact_snapshot?: MarketplaceApplicationContactSnapshot | null;
+  application_eligibility_snapshot?: MarketplaceApplicationEligibilitySnapshot | null;
   converted_contract_id?: string | null;
   data_origin?: DataOrigin | null;
   request_key?: string | null;
@@ -2177,6 +2206,7 @@ interface MarketplaceCampaignSnapshot {
   uploadDeadline?: string;
   platforms?: InfluencerPlatform[];
   deliverables?: string[];
+  eligibilityRules?: CampaignEligibilityRule[];
   applicationContactFields?: CampaignApplicationContactField[];
   applicationContactConsentVersion?: string;
   requiredConsents?: CampaignRequiredConsent[];
@@ -2215,6 +2245,15 @@ interface MarketplaceApplicationContactSnapshot {
   recipient_name: string;
   purpose: string;
   retention_policy: "campaign_end_plus_90_days";
+}
+
+interface MarketplaceApplicationEligibilitySnapshot {
+  version: "2026-08-11.3";
+  actorProfileId: string;
+  campaignId: string;
+  campaignRevision: string;
+  decisionAt: string;
+  items: CampaignEligibilityEvidence[];
 }
 
 const requireSupabaseConfig = () => {
@@ -9604,6 +9643,18 @@ const runPrivacyRetentionSweep = async () => {
   const now = new Date().toISOString();
   const runKey = `vercel:${now.slice(0, 13)}`;
   const storageDeadlineAt = Date.now() + 150_000;
+  const campaignNaverMetrics = await callSupabaseRpc<Record<string, unknown>>(
+    "cleanup_campaign_naver_application_metrics",
+    { p_now: now },
+    "campaign Naver metric retention",
+  );
+  const naverInfluencerCredentials = await callSupabaseRpc<
+    Record<string, unknown>
+  >(
+    "cleanup_naver_influencer_credentials",
+    { p_now: now },
+    "Naver Influencer credential retention",
+  );
   const applicationContacts = await callSupabaseRpc<Record<string, unknown>>(
     "redact_expired_campaign_application_contacts",
     {
@@ -9651,7 +9702,16 @@ const runPrivacyRetentionSweep = async () => {
     await enqueuePrivacyRetentionBacklogAlert(backlog, now).catch(() => undefined);
     throw new Error("Privacy retention sweep has retryable failures");
   }
-  return { applicationContacts, prepared, storage, auth, finalized, backlog };
+  return {
+    campaignNaverMetrics,
+    naverInfluencerCredentials,
+    applicationContacts,
+    prepared,
+    storage,
+    auth,
+    finalized,
+    backlog,
+  };
 };
 
 const upsertGoogleWorkspaceConnection = async (
@@ -10855,9 +10915,13 @@ const parseYoutubeChannelTarget = (
     // Fall back to the submitted handle.
   }
 
+  const normalizedHandle = platformHandle.trim().replace(/^@+/, "");
+  if (/^UC[a-zA-Z0-9_-]{20,}$/.test(normalizedHandle)) {
+    return { type: "id" as const, value: normalizedHandle };
+  }
   return {
     type: "handle" as const,
-    value: normalizeHandleForComparison(platformHandle),
+    value: normalizeHandleForComparison(normalizedHandle),
   };
 };
 
@@ -14185,6 +14249,9 @@ const normalizeBrandCampaigns = (
       );
       const platforms = normalizeCampaignPlatforms(record.platforms);
       const deliverables = normalizeStringArrayForStorage(record.deliverables, [], 6);
+      const eligibilityRules = normalizeCampaignEligibilityRules(
+        record.eligibilityRules ?? record.eligibility_rules,
+      );
       const requiredConsents = normalizeCampaignRequiredConsents(
         record.requiredConsents ?? record.required_consents,
       );
@@ -14224,6 +14291,7 @@ const normalizeBrandCampaigns = (
         ...(uploadDeadline ? { uploadDeadline } : {}),
         ...(platforms.length > 0 ? { platforms } : {}),
         ...(deliverables.length > 0 ? { deliverables } : {}),
+        ...(eligibilityRules.length > 0 ? { eligibilityRules } : {}),
         ...(applicationContactFields.length > 0
           ? {
               applicationContactFields,
@@ -14955,49 +15023,6 @@ const groupMarketplaceChannelsByProfileId = (
   return grouped;
 };
 
-const readNaverSelfReportedMarketplaceMetric = (
-  channel: SupabaseMarketplaceInfluencerChannelRow,
-) => {
-  if (channel.platform !== "naver_blog") return undefined;
-
-  const metadata = channel.follower_sync_metadata;
-  const count = normalizeVerificationMetricCount(channel.follower_count);
-  const channelHandle = extractNaverBlogId(channel.handle);
-  const reportedHandle = extractNaverBlogId(
-    normalizeOptionalText(metadata?.reported_handle),
-  );
-  const checkedAt = normalizeOptionalText(metadata?.checked_at);
-  const syncedAt = normalizeOptionalText(channel.follower_count_synced_at);
-  const checkedAtTime = Date.parse(checkedAt ?? "");
-  const syncedAtTime = Date.parse(syncedAt ?? "");
-  if (
-    channel.follower_sync_source !== "creator_self_report" ||
-    count === undefined ||
-    metadata?.provider !== "creator_self_report" ||
-    metadata?.metric !== "average_daily_visitors_4d" ||
-    metadata?.trust !== "self_reported" ||
-    Number(metadata?.period_days) !== 4 ||
-    metadata?.account_approved !== true ||
-    metadata?.availability !== "available" ||
-    !channelHandle ||
-    reportedHandle !== channelHandle ||
-    !Number.isFinite(checkedAtTime) ||
-    !Number.isFinite(syncedAtTime) ||
-    syncedAtTime !== checkedAtTime
-  ) {
-    return undefined;
-  }
-
-  return {
-    followersLabel: `일평균 ${count.toLocaleString("ko-KR")}명`,
-    performanceLabel: "최근 4일 평균 · 자가신고",
-    metricType: "average_daily_visitors_4d" as const,
-    metricSource: "creator_self_report" as const,
-    metricTrust: "self_reported" as const,
-    metricPeriodDays: 4 as const,
-  };
-};
-
 const hasMisplacedNaverSelfReportProvenance = (
   channel: SupabaseMarketplaceInfluencerChannelRow,
 ) => {
@@ -15075,17 +15100,16 @@ const mapInfluencerProfileRowToMarketplaceProfile = (
         ownershipStatus,
       };
     }
-    const naverSelfReport = readNaverSelfReportedMarketplaceMetric(channel);
     const isNaverBlog = channel.platform === "naver_blog";
     const hasMisplacedNaverSelfReport =
       hasMisplacedNaverSelfReportProvenance(channel);
     const followersLabel = isNaverBlog
-      ? (naverSelfReport?.followersLabel ?? "계정 연동")
+      ? ""
       : hasMisplacedNaverSelfReport
         ? "계정 연동"
         : channel.followers_label ?? "계정 연동";
     const performanceLabel = isNaverBlog
-      ? (naverSelfReport?.performanceLabel ?? "자가신고 미입력")
+      ? "계정 인증 완료"
       : hasMisplacedNaverSelfReport
         ? "프로필에서 확인"
         : channel.performance_label ?? "프로필에서 확인";
@@ -15097,7 +15121,6 @@ const mapInfluencerProfileRowToMarketplaceProfile = (
       followersLabel,
       performanceLabel,
       ownershipStatus,
-      ...(naverSelfReport ?? {}),
     };
   });
 
@@ -15199,7 +15222,7 @@ const mapDiscoveredInfluencerRowToMarketplaceProfile = (
           : "공개 지표 확인");
   const performanceLabel =
     row.platform === "naver_blog"
-      ? "자가신고 미입력"
+      ? "공개 채널"
       : averageViewsLabel
         ? `평균 조회 ${averageViewsLabel}`
         : postCountLabel
@@ -15621,34 +15644,12 @@ const parseMarketplaceRegisteredInfluencerDirectoryItem = (
       followerCountValue >= 0
         ? followerCountValue
         : undefined;
-    const hasNaverSelfReportProvenance =
-      channel.metric_type === "average_daily_visitors_4d" ||
-      channel.metric_source === "creator_self_report" ||
-      channel.metric_trust === "self_reported";
-    const hasMisplacedNaverSelfReport =
-      platform !== "naver_blog" && hasNaverSelfReportProvenance;
-    const isNaverSelfReport =
-      platform === "naver_blog" &&
-      channel.metric_type === "average_daily_visitors_4d" &&
-      channel.metric_source === "creator_self_report" &&
-      channel.metric_trust === "self_reported" &&
-      channel.metric_period_days === 4;
     return {
       platform: platform as InfluencerPlatform,
       handle,
       ...(url ? { url } : {}),
-      ...(followerCount !== undefined &&
-      !hasMisplacedNaverSelfReport &&
-      (platform !== "naver_blog" || isNaverSelfReport)
+      ...(followerCount !== undefined && platform !== "naver_blog"
         ? { followerCount }
-        : {}),
-      ...(isNaverSelfReport
-        ? {
-            metricType: "average_daily_visitors_4d" as const,
-            metricSource: "creator_self_report" as const,
-            metricTrust: "self_reported" as const,
-            metricPeriodDays: 4 as const,
-          }
         : {}),
     };
   });
@@ -15788,23 +15789,10 @@ const mapRegisteredInfluencerDirectoryItemToMarketplaceProfile = (
     handle: formatStoredMarketplacePlatformHandle(channel.handle, channel.platform),
     url: channel.url ?? buildMarketplacePlatformUrl(channel.platform, channel.handle),
     followersLabel:
-      channel.followerCount === undefined
+      channel.platform === "naver_blog" || channel.followerCount === undefined
         ? ""
-        : channel.metricTrust === "self_reported"
-          ? `일평균 ${channel.followerCount.toLocaleString("ko-KR")}명`
-          : `${channel.followerCount.toLocaleString("ko-KR")}명`,
-    performanceLabel:
-      channel.metricTrust === "self_reported"
-        ? "최근 4일 평균 · 자가신고"
-        : "계정 인증 완료",
-    ...(channel.metricTrust === "self_reported"
-      ? {
-          metricType: channel.metricType,
-          metricSource: channel.metricSource,
-          metricTrust: channel.metricTrust,
-          metricPeriodDays: channel.metricPeriodDays,
-        }
-      : {}),
+        : `${channel.followerCount.toLocaleString("ko-KR")}명`,
+    performanceLabel: "계정 인증 완료",
   }));
 
   return {
@@ -15867,6 +15855,54 @@ const hydrateAuthenticatedMarketplaceInfluencerDirectoryItems = async (
   });
 };
 
+interface ActiveNaverInfluencerBadgeRpcRow {
+  blog_id?: unknown;
+}
+
+const attachActiveNaverInfluencerBadges = async (
+  profiles: MarketplaceInfluencerProfile[],
+) => {
+  if (!useSupabase || profiles.length === 0) return profiles;
+  const blogIds = Array.from(
+    new Set(
+      profiles.flatMap((profile) =>
+        profile.platforms
+          .filter((platform) => platform.platform === "naver_blog")
+          .map(
+            (platform) =>
+              normalizeNaverBlogIdentity(platform.handle) ||
+              normalizeNaverBlogIdentity(platform.url),
+          )
+          .filter(Boolean),
+      ),
+    ),
+  ).slice(0, 200);
+  if (blogIds.length === 0) return profiles;
+  const rows = await callSupabaseRpc<ActiveNaverInfluencerBadgeRpcRow[]>(
+    "get_active_naver_influencer_badges",
+    { p_blog_ids: blogIds },
+    "active Naver Influencer badges",
+  ).catch(() => []);
+  const activeBlogIds = new Set(
+    rows
+      .map((row) => normalizeNaverBlogIdentity(normalizeRequiredText(row.blog_id)))
+      .filter(Boolean),
+  );
+  if (activeBlogIds.size === 0) return profiles;
+  return profiles.map((profile) => ({
+    ...profile,
+    platforms: profile.platforms.map((platform) => {
+      if (platform.platform !== "naver_blog") return platform;
+      const blogId =
+        normalizeNaverBlogIdentity(platform.handle) ||
+        normalizeNaverBlogIdentity(platform.url);
+      return blogId && activeBlogIds.has(blogId)
+        ? { ...platform, naverInfluencer: true }
+        : platform;
+    }),
+  }));
+};
+
 const readIndexedMarketplaceInfluencerPage = async ({
   page,
   sort,
@@ -15920,9 +15956,10 @@ const readIndexedMarketplaceInfluencerPage = async ({
   const parsed = parseMarketplaceInfluencerDirectoryPayload(
     await rpcResponse.json(),
   );
-  const profiles = await hydrateMarketplaceInfluencerDirectoryReferences(
+  const hydratedProfiles = await hydrateMarketplaceInfluencerDirectoryReferences(
     parsed.references,
   );
+  const profiles = await attachActiveNaverInfluencerBadges(hydratedProfiles);
   return {
     profiles,
     total: parsed.total,
@@ -16002,9 +16039,10 @@ const readAuthenticatedMarketplaceInfluencerPage = async ({
   const parsed = parseAuthenticatedMarketplaceInfluencerDirectoryPayload(
     await rpcResponse.json(),
   );
-  const profiles = await hydrateAuthenticatedMarketplaceInfluencerDirectoryItems(
+  const hydratedProfiles = await hydrateAuthenticatedMarketplaceInfluencerDirectoryItems(
     parsed.items,
   );
+  const profiles = await attachActiveNaverInfluencerBadges(hydratedProfiles);
   return {
     profiles,
     total: parsed.total,
@@ -16047,7 +16085,7 @@ const readPublicMarketplaceInfluencerProfileByHandle = async (handle: string) =>
           : 1,
     )[0];
     if (directoryRow) {
-      const profiles = await hydrateMarketplaceInfluencerDirectoryReferences([
+      const hydratedProfiles = await hydrateMarketplaceInfluencerDirectoryReferences([
         {
           listingKey: directoryRow.listing_key,
           sourceType: directoryRow.source_type,
@@ -16055,7 +16093,7 @@ const readPublicMarketplaceInfluencerProfileByHandle = async (handle: string) =>
           publicHandle: directoryRow.public_handle,
         },
       ]);
-      return profiles[0];
+      return (await attachActiveNaverInfluencerBadges(hydratedProfiles))[0];
     }
 
     let profileQuery = `?select=*&public_handle=eq.${encodeURIComponent(
@@ -16089,7 +16127,7 @@ const readPublicMarketplaceInfluencerProfileByHandle = async (handle: string) =>
     if (filterOperationalMarketplaceTestData && hasOperationalTestMarker(profile)) {
       return undefined;
     }
-    return profile;
+    return (await attachActiveNaverInfluencerBadges([profile]))[0];
   }
 
   return findInfluencerProfileByHandle(
@@ -16133,8 +16171,11 @@ const readRegisteredMarketplaceInfluencerByStableHandle = async (handle: string)
     public_profile_published: row.public_profile_published,
     public_profile_handle: row.public_profile_handle,
   });
+  const [profile] = await attachActiveNaverInfluencerBadges([
+    mapRegisteredInfluencerDirectoryItemToMarketplaceProfile(item),
+  ]);
   return {
-    profile: mapRegisteredInfluencerDirectoryItemToMarketplaceProfile(item),
+    profile,
     marketplaceProfileId: row.public_marketplace_profile_id,
   };
 };
@@ -16775,6 +16816,13 @@ const fetchYoutubeFollowerSnapshot = async (
     const response = await fetchYoutubeChannelForTarget(apiKey, target, 4500);
     const item = response.payload.items?.[0];
     const followerCount = normalizeFollowerCount(item?.statistics?.subscriberCount);
+    const identityMatches = Boolean(
+      item &&
+        (target.type === "id"
+          ? item.id === target.value
+          : normalizeHandleForComparison(item.snippet?.customUrl) ===
+            normalizeHandleForComparison(target.value)),
+    );
 
     if (!response.ok) {
       return buildFollowerSnapshot({
@@ -16785,12 +16833,12 @@ const fetchYoutubeFollowerSnapshot = async (
       });
     }
 
-    if (!item) {
+    if (!item || !identityMatches) {
       return buildFollowerSnapshot({
         status: "failed",
         provider: "youtube_data_api",
         httpStatus: response.status,
-        error: "YouTube channel was not found.",
+        error: "YouTube channel identity did not match.",
       });
     }
 
@@ -16832,89 +16880,35 @@ const fetchYoutubeFollowerSnapshot = async (
 const fetchInstagramFollowerSnapshot = async (
   channel: SupabaseMarketplaceInfluencerChannelRow,
 ): Promise<MarketplaceFollowerSyncSnapshot> => {
-  const accessToken = process.env.META_GRAPH_ACCESS_TOKEN?.trim();
   const igUserId = process.env.META_IG_USER_ID?.trim();
   const graphVersion = process.env.META_GRAPH_API_VERSION?.trim() || "v24.0";
   const username = normalizeHandleForComparison(channel.handle).replace(
     /[^a-z0-9._]/g,
     "",
   );
-
-  if (!accessToken || !igUserId) {
-    return buildFollowerSnapshot({
-      status: "not_configured",
-      provider: "instagram_graph_api",
-      error: "META_GRAPH_ACCESS_TOKEN/META_IG_USER_ID is not configured.",
-      metadata: { username: username || undefined },
-    });
-  }
-
-  if (!username) {
-    return buildFollowerSnapshot({
-      status: "skipped",
-      provider: "instagram_graph_api",
-      error: "Instagram username is missing.",
-    });
-  }
-
-  try {
-    const url = new URL(`https://graph.facebook.com/${graphVersion}/${igUserId}`);
-    url.searchParams.set(
-      "fields",
-      `business_discovery.username(${username}){id,username,followers_count,media_count}`,
-    );
-    url.searchParams.set("access_token", accessToken);
-    const response = await fetchJsonWithTimeout<{
-      business_discovery?: {
-        id?: string;
-        username?: string;
-        followers_count?: number;
-        media_count?: number;
-      };
-      error?: unknown;
-    }>(url.toString(), {}, 4500);
-    const profile = response.payload.business_discovery;
-    const followerCount = normalizeFollowerCount(profile?.followers_count);
-
-    if (!response.ok) {
-      return buildFollowerSnapshot({
-        status: "failed",
-        provider: "instagram_graph_api",
-        httpStatus: response.status,
-        error: "Instagram Graph API request failed.",
-        metadata: { username },
-      });
-    }
-
-    if (!profile || followerCount === undefined) {
-      return buildFollowerSnapshot({
-        status: "failed",
-        provider: "instagram_graph_api",
-        httpStatus: response.status,
-        error: "Instagram business discovery did not return a follower count.",
-        metadata: { username },
-      });
-    }
-
+  const metric = await fetchInstagramBusinessFollowerMetric({
+    accessToken: metaBusinessDiscoveryAccessToken,
+    igUserId,
+    graphVersion,
+    username,
+  });
+  if (metric.status === "available") {
     return buildFollowerSnapshot({
       status: "synced",
       provider: "instagram_graph_api",
-      httpStatus: response.status,
-      followerCount,
-      metadata: {
-        id: profile.id,
-        username: profile.username,
-        media_count: profile.media_count,
-      },
-    });
-  } catch (error) {
-    return buildFollowerSnapshot({
-      status: "failed",
-      provider: "instagram_graph_api",
-      error: error instanceof Error ? error.message : "Instagram sync failed.",
+      followerCount: metric.followerCount,
+      checkedAt: metric.checkedAt,
       metadata: { username },
     });
   }
+  return buildFollowerSnapshot({
+    status:
+      metric.status === "not_configured" ? "not_configured" : "failed",
+    provider: "instagram_graph_api",
+    httpStatus: metric.httpStatus,
+    error: "Instagram follower count is currently unavailable.",
+    metadata: { username: username || undefined },
+  });
 };
 
 const fetchTikTokFollowerSnapshot = async (
@@ -17957,6 +17951,10 @@ const validateMarketplaceCampaignInput = (body: Record<string, unknown>) => {
   const uploadDeadline = normalizeOptionalText(body.uploadDeadline);
   const platforms = normalizeCampaignPlatforms(body.platforms, ["instagram"]);
   const deliverables = normalizeStringArrayForStorage(body.deliverables, [], 6);
+  const eligibilityRulesResult = validateCampaignEligibilityRules(
+    body.eligibilityRules ?? body.eligibility_rules,
+    platforms,
+  );
 
   const titleValidationError = getCampaignTitleValidationError(title);
   if (titleValidationError) return { error: titleValidationError };
@@ -17986,6 +17984,9 @@ const validateMarketplaceCampaignInput = (body: Record<string, unknown>) => {
   }
   if (!deliverables.length) {
     return { error: "콘텐츠를 6개 이내로 입력해 주세요." };
+  }
+  if (eligibilityRulesResult.ok === false) {
+    return { error: eligibilityRulesResult.error };
   }
   if (!uploadDeadline || !isValidIsoCalendarDate(uploadDeadline)) {
     return { error: "제출마감일을 올바른 날짜로 입력해 주세요." };
@@ -18019,6 +18020,7 @@ const validateMarketplaceCampaignInput = (body: Record<string, unknown>) => {
     uploadDeadline,
     platforms,
     deliverables,
+    eligibilityRules: eligibilityRulesResult.rules,
     applicationContactFields: applicationContactFieldsResult.fields,
     requiredConsents: requiredConsentsResult.items,
     consentVersion: requiredConsentsResult.version,
@@ -18127,6 +18129,9 @@ const upsertAdvertiserMarketplaceCampaign = async (
       payload.deliverables.length > 0
         ? payload.deliverables
         : ["콘텐츠 협의"],
+    ...(payload.eligibilityRules.length > 0
+      ? { eligibilityRules: payload.eligibilityRules }
+      : {}),
     ...(payload.applicationContactFields.length > 0
       ? {
           applicationContactFields: payload.applicationContactFields,
@@ -18279,6 +18284,7 @@ const marketplaceCampaignEditFieldAliases: Record<string, string[]> = {
   uploadDeadline: ["uploadDeadline", "upload_deadline"],
   platforms: ["platforms"],
   deliverables: ["deliverables"],
+  eligibilityRules: ["eligibilityRules", "eligibility_rules"],
   applicationContactFields: [
     "applicationContactFields",
     "application_contact_fields",
@@ -18423,6 +18429,11 @@ const buildMarketplaceCampaignEditInput = (
     "deliverables",
     campaign.deliverables,
   ),
+  eligibilityRules: readMarketplaceCampaignEditValue(
+    body,
+    "eligibilityRules",
+    campaign.eligibilityRules,
+  ),
   applicationContactFields: readMarketplaceCampaignEditValue(
     body,
     "applicationContactFields",
@@ -18458,6 +18469,9 @@ const buildMarketplaceCampaignEditPatch = (
     uploadDeadline: campaign.uploadDeadline,
     platforms: campaign.platforms,
     deliverables: campaign.deliverables,
+    eligibilityRules: campaign.eligibilityRules?.length
+      ? campaign.eligibilityRules
+      : undefined,
     applicationContactFields: campaign.applicationContactFields?.length
       ? campaign.applicationContactFields
       : undefined,
@@ -18487,6 +18501,9 @@ const buildMarketplaceCampaignEditPatch = (
     uploadDeadline: payload.uploadDeadline,
     platforms: payload.platforms,
     deliverables: payload.deliverables,
+    eligibilityRules: payload.eligibilityRules.length
+      ? payload.eligibilityRules
+      : undefined,
     applicationContactFields: payload.applicationContactFields.length
       ? payload.applicationContactFields
       : undefined,
@@ -18965,6 +18982,9 @@ const buildMarketplaceCampaignSnapshot = (
   ...(campaign.uploadDeadline ? { uploadDeadline: campaign.uploadDeadline } : {}),
   ...(campaign.platforms?.length ? { platforms: campaign.platforms } : {}),
   ...(campaign.deliverables?.length ? { deliverables: campaign.deliverables } : {}),
+  ...(campaign.eligibilityRules?.length
+    ? { eligibilityRules: campaign.eligibilityRules }
+    : {}),
   ...(campaign.applicationContactFields?.length
     ? {
         applicationContactFields: normalizeCampaignApplicationContactFields(
@@ -19025,6 +19045,9 @@ const normalizeMarketplaceCampaignSnapshot = (
   const brandCategory = normalizeOptionalText(record.brandCategory);
   const platforms = normalizeCampaignPlatforms(record.platforms);
   const deliverables = normalizeStringArrayForStorage(record.deliverables, [], 8);
+  const eligibilityRules = normalizeCampaignEligibilityRules(
+    record.eligibilityRules ?? record.eligibility_rules,
+  );
   const requiredConsents = normalizeCampaignRequiredConsents(
     record.requiredConsents ?? record.required_consents,
   );
@@ -19069,6 +19092,7 @@ const normalizeMarketplaceCampaignSnapshot = (
     ...(uploadDeadline ? { uploadDeadline } : {}),
     ...(platforms.length ? { platforms } : {}),
     ...(deliverables.length ? { deliverables } : {}),
+    ...(eligibilityRules.length ? { eligibilityRules } : {}),
     ...(applicationContactFields.length
       ? {
           applicationContactFields,
@@ -19167,6 +19191,9 @@ const buildCampaignApplicationSummary = (campaign: MarketplaceCampaignPost) => {
       : undefined,
     campaign.platformLabels.length
       ? `플랫폼: ${campaign.platformLabels.join(", ")}`
+      : undefined,
+    campaign.eligibilityRules?.length
+      ? `지원 조건: ${formatCampaignEligibilityRules(campaign.eligibilityRules)}`
       : undefined,
     campaign.uploadDeadline ? `제출마감일: ${campaign.uploadDeadline}` : undefined,
     campaign.deadline ? `모집마감일: ${campaign.deadline}` : undefined,
@@ -19417,11 +19444,1250 @@ const normalizeMarketplaceApplicationContactSnapshot = (
   };
 };
 
+type CampaignEligibilityFailure = {
+  ok: false;
+  status: 403 | 422 | 503;
+  code:
+    | "influencer_verification_required"
+    | "platform_account_selection_required"
+    | "platform_account_selection_invalid"
+    | "condition_not_met"
+    | "metric_unavailable"
+    | "naver_counter_private"
+    | "naver_influencer_profile_required"
+    | "naver_influencer_check_unavailable"
+    | "naver_influencer_attestation_invalid";
+  error: string;
+  next_path?: "/influencer/verification";
+  retryable?: boolean;
+  self_attestation_available?: boolean;
+  self_attestation_challenge?: string;
+  naver_influencer_profile_url?: string;
+  self_attestation_version?: string;
+};
+
+type ApprovedCampaignEligibilityAccount = {
+  request: VerificationRequestRecord;
+  platform: CampaignEligibilityPlatform;
+};
+
+interface CampaignNaverMetricRpcRow {
+  average_daily_visitors_4d?: unknown;
+  checked_at?: unknown;
+}
+
+interface NaverInfluencerEligibilityStateRpcRow {
+  automatic_profile_id?: unknown;
+  automatic_checked_at?: unknown;
+  automatic_expires_at?: unknown;
+  self_profile_id?: unknown;
+  self_attestation_version?: unknown;
+  self_attested_at?: unknown;
+  self_expires_at?: unknown;
+}
+
+type CampaignNaverInfluencerEvidence = {
+  platform: "naver_blog";
+  metric: "naver_influencer";
+  verificationRequestId: string;
+  evidenceType: "auto_verified" | "self_attested";
+  profileUrl: string;
+  evidenceAt: string;
+  decisionAt: string;
+  attestationVersion?: string;
+};
+
+type CampaignAudienceMetricEvidence = {
+  platform: "instagram" | "youtube";
+  metric: "follower_count" | "subscriber_count";
+  verificationRequestId: string;
+  count: number;
+  minimum: number;
+  source: "instagram_user_profile_api" | "instagram_graph_api" | "youtube_data_api";
+  evidenceAt: string;
+  decisionAt: string;
+  accountHandle?: string;
+  accountUrl?: string;
+};
+
+type CampaignEligibilityEvidence =
+  | CampaignNaverInfluencerEvidence
+  | CampaignAudienceMetricEvidence;
+
+type CampaignEligibilityEvaluation = {
+  ok: true;
+  evidence?: CampaignEligibilityEvidence[];
+};
+
+type NaverInfluencerSelfAttestationChallenge = {
+  version: 1;
+  profileId: string;
+  verificationRequestId: string;
+  campaignId: string;
+  campaignRevision: string;
+  influencerProfileId: string;
+  issuedAt: number;
+  expiresAt: number;
+};
+
+const NAVER_INFLUENCER_ATTESTATION_VERSION = "2026-08-11.2";
+const CAMPAIGN_ELIGIBILITY_SNAPSHOT_VERSION = "2026-08-11.3";
+const NAVER_INFLUENCER_ATTESTATION_CHALLENGE_TTL_MS = 10 * 60 * 1000;
+
+const normalizeMarketplaceApplicationEligibilitySnapshot = (
+  value: unknown,
+): MarketplaceApplicationEligibilitySnapshot | undefined => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const decisionAt = normalizeRequiredText(record.decisionAt);
+  const actorProfileId = normalizeRequiredText(record.actorProfileId);
+  const campaignId = normalizeRequiredText(record.campaignId);
+  const campaignRevision = normalizeRequiredText(record.campaignRevision);
+  if (
+    record.version !== CAMPAIGN_ELIGIBILITY_SNAPSHOT_VERSION ||
+    !isUuidText(actorProfileId) ||
+    !campaignId ||
+    !campaignRevision ||
+    !decisionAt ||
+    !Array.isArray(record.items) ||
+    record.items.length === 0
+  ) {
+    return undefined;
+  }
+  const items: CampaignEligibilityEvidence[] = [];
+  for (const rawItem of record.items) {
+    if (!rawItem || typeof rawItem !== "object" || Array.isArray(rawItem)) {
+      return undefined;
+    }
+    const item = rawItem as Record<string, unknown>;
+    const verificationRequestId = normalizeRequiredText(
+      item.verificationRequestId,
+    );
+    const evidenceAt = normalizeRequiredText(item.evidenceAt);
+    if (
+      !isUuidText(verificationRequestId) ||
+      !evidenceAt ||
+      normalizeRequiredText(item.decisionAt) !== decisionAt
+    ) {
+      return undefined;
+    }
+    if (item.platform === "naver_blog" && item.metric === "naver_influencer") {
+      const evidenceType = normalizeRequiredText(item.evidenceType);
+      const profile = normalizeNaverInfluencerProfile(
+        normalizeRequiredText(item.profileUrl),
+      );
+      const attestationVersion = normalizeOptionalText(item.attestationVersion);
+      if (
+        (evidenceType !== "auto_verified" && evidenceType !== "self_attested") ||
+        !profile ||
+        profile.profileUrl !== item.profileUrl ||
+        (evidenceType === "self_attested" &&
+          attestationVersion !== NAVER_INFLUENCER_ATTESTATION_VERSION)
+      ) {
+        return undefined;
+      }
+      items.push({
+        platform: "naver_blog",
+        metric: "naver_influencer",
+        verificationRequestId,
+        evidenceType,
+        profileUrl: profile.profileUrl,
+        evidenceAt,
+        decisionAt,
+        ...(attestationVersion ? { attestationVersion } : {}),
+      });
+      continue;
+    }
+    const platform =
+      item.platform === "instagram" || item.platform === "youtube"
+        ? item.platform
+        : undefined;
+    const expectedMetric =
+      platform === "instagram"
+        ? "follower_count"
+        : platform === "youtube"
+          ? "subscriber_count"
+          : undefined;
+    const source = normalizeRequiredText(item.source);
+    const count = normalizeFollowerCount(item.count);
+    const minimum = normalizeFollowerCount(item.minimum);
+    const accountHandle =
+      platform === "instagram"
+        ? normalizeInstagramUsername(normalizeRequiredText(item.accountHandle))
+        : undefined;
+    const accountUrl =
+      accountHandle && platform === "instagram"
+        ? `https://www.instagram.com/${accountHandle}/`
+        : undefined;
+    if (
+      !platform ||
+      item.metric !== expectedMetric ||
+      count === undefined ||
+      minimum === undefined ||
+      count < minimum ||
+      (platform === "instagram" &&
+        source !== "instagram_user_profile_api" &&
+        source !== "instagram_graph_api") ||
+      (platform === "youtube" && source !== "youtube_data_api") ||
+      (platform === "instagram" &&
+        (!accountHandle || item.accountHandle !== accountHandle || item.accountUrl !== accountUrl))
+    ) {
+      return undefined;
+    }
+    items.push({
+      platform,
+      metric: expectedMetric,
+      verificationRequestId,
+      count,
+      minimum,
+      source: source as CampaignAudienceMetricEvidence["source"],
+      evidenceAt,
+      decisionAt,
+      ...(accountHandle && accountUrl ? { accountHandle, accountUrl } : {}),
+    });
+  }
+  return {
+    version: CAMPAIGN_ELIGIBILITY_SNAPSHOT_VERSION,
+    actorProfileId,
+    campaignId,
+    campaignRevision,
+    decisionAt,
+    items,
+  };
+};
+
+const naverCampaignEligibilityMetricInflight = new Map<
+  string,
+  Promise<NaverBlogVisitorMetricResult>
+>();
+const naverInfluencerEligibilityInflight = new Map<
+  string,
+  Promise<NaverInfluencerProfileCheckResult | undefined>
+>();
+const instagramCampaignMetricRefreshInflight = new Map<
+  string,
+  Promise<TrustedInstagramFollowerMetric | undefined>
+>();
+
+const readTrustedInstagramFollowerMetricForRequest = async (
+  request: VerificationRequestRecord,
+): Promise<TrustedInstagramFollowerMetric | undefined> => {
+  const dmMetric = readTrustedInstagramDmFollowerMetric(
+    request,
+    isOperationalTestVerificationRequest(request),
+  );
+  const ownerProfileId = isUuidText(request.profile_id ?? "")
+    ? request.profile_id!
+    : isUuidText(request.target_id ?? "")
+      ? request.target_id
+      : undefined;
+  if (!ownerProfileId || request.data_origin !== "production") return dmMetric;
+  const { profiles, channels } = await readMarketplaceInfluencerRows(
+    `?select=*&owner_profile_id=eq.${encodeURIComponent(
+      ownerProfileId,
+    )}&data_origin=eq.production&limit=1`,
+  );
+  const profile = profiles[0];
+  const expectedHandle = normalizeHandleForComparison(request.platform_handle);
+  const channel = profile
+    ? (channels.get(profile.id) ?? []).find(
+        (candidate) =>
+          candidate.platform === "instagram" &&
+          normalizeHandleForComparison(candidate.handle) === expectedHandle,
+      )
+    : undefined;
+  const channelMetric = readTrustedInstagramChannelFollowerMetric(
+    channel,
+    request,
+  );
+  return selectLatestInstagramFollowerMetric(dmMetric, channelMetric);
+};
+
+const rememberCampaignInstagramFollowerMetric = async ({
+  profileId,
+  verificationRequestId,
+  expectedHandle,
+  metric,
+}: {
+  profileId: string;
+  verificationRequestId: string;
+  expectedHandle: string;
+  metric: TrustedInstagramFollowerMetric;
+}) => {
+  const rows = await callSupabaseRpc<{
+    follower_count?: unknown;
+    checked_at?: unknown;
+    source?: unknown;
+  }>(
+    "directsign_upsert_campaign_instagram_follower_metric",
+    {
+      p_profile_id: profileId,
+      p_verification_request_id: verificationRequestId,
+      p_expected_handle: expectedHandle,
+      p_follower_count: metric.followerCount,
+      p_checked_at: metric.checkedAt,
+      p_source: metric.source,
+    },
+    "campaign Instagram follower metric",
+  );
+  const row = rows[0];
+  const followerCount = normalizeFollowerCount(row?.follower_count);
+  const checkedAt = normalizeRequiredText(row?.checked_at);
+  const source = normalizeRequiredText(row?.source);
+  if (
+    followerCount === undefined ||
+    !checkedAt ||
+    (source !== "instagram_user_profile_api" &&
+      source !== "instagram_graph_api")
+  ) {
+    throw new Error("Campaign Instagram follower metric write was not confirmed");
+  }
+  return {
+    followerCount,
+    checkedAt,
+    source,
+    verificationRequestId,
+  } satisfies TrustedInstagramFollowerMetric;
+};
+
+const refreshCampaignInstagramFollowerMetric = ({
+  profileId,
+  request,
+}: {
+  profileId: string;
+  request: VerificationRequestRecord;
+}) => {
+  const key = `${profileId}:${request.id}`;
+  const existing = instagramCampaignMetricRefreshInflight.get(key);
+  if (existing) return existing;
+  const operation = (async () => {
+    const expectedHandle = normalizeHandleForComparison(request.platform_handle);
+    if (!expectedHandle) return undefined;
+    const snapshot = await fetchInstagramBusinessFollowerMetric({
+      accessToken: metaBusinessDiscoveryAccessToken,
+      igUserId: process.env.META_IG_USER_ID?.trim(),
+      graphVersion: process.env.META_GRAPH_API_VERSION?.trim() || "v24.0",
+      username: expectedHandle,
+    });
+    if (snapshot.status !== "available") return undefined;
+    return rememberCampaignInstagramFollowerMetric({
+      profileId,
+      verificationRequestId: request.id,
+      expectedHandle,
+      metric: {
+        followerCount: snapshot.followerCount,
+        checkedAt: snapshot.checkedAt,
+        source: snapshot.source,
+        verificationRequestId: request.id,
+      },
+    });
+  })().finally(() => instagramCampaignMetricRefreshInflight.delete(key));
+  instagramCampaignMetricRefreshInflight.set(key, operation);
+  return operation;
+};
+
+const readCampaignEligibilityAccountIds = (
+  body: Record<string, unknown>,
+  rules: readonly CampaignEligibilityRule[],
+):
+  | { ok: true; accountIds: Partial<Record<CampaignEligibilityPlatform, string>> }
+  | CampaignEligibilityFailure => {
+  const raw = body.eligibilityAccountIds ?? body.eligibility_account_ids;
+  if (raw === undefined || raw === null) return { ok: true, accountIds: {} };
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return {
+      ok: false,
+      status: 422,
+      code: "platform_account_selection_invalid",
+      error: "지원 조건을 확인할 인증 계정을 다시 선택해 주세요.",
+    };
+  }
+
+  const allowedPlatforms = new Set(rules.map((rule) => rule.platform));
+  const accountIds: Partial<Record<CampaignEligibilityPlatform, string>> = {};
+  for (const [platform, value] of Object.entries(raw)) {
+    if (
+      !allowedPlatforms.has(platform as CampaignEligibilityPlatform) ||
+      !isUuidText(normalizeOptionalText(value))
+    ) {
+      return {
+        ok: false,
+        status: 422,
+        code: "platform_account_selection_invalid",
+        error: "지원 조건을 확인할 인증 계정을 다시 선택해 주세요.",
+      };
+    }
+    accountIds[platform as CampaignEligibilityPlatform] = normalizeRequiredText(value);
+  }
+  return { ok: true, accountIds };
+};
+
+const getApprovedCampaignEligibilityRequests = (
+  requests: VerificationRequestRecord[],
+  platform: CampaignEligibilityPlatform,
+  dataOrigin: DataOrigin,
+) =>
+  requests
+    .filter(
+      (request) => {
+        const requestOrigin =
+          normalizeDataOrigin(request.data_origin) ??
+          (isOperationalTestVerificationRequest(request) ? "qa" : "production");
+        return (
+        requestOrigin === dataOrigin &&
+        request.target_type === "influencer_account" &&
+        request.verification_type === "platform_account" &&
+        request.status === "approved" &&
+        request.platform === platform &&
+        hasText(request.reviewed_at) &&
+        hasText(request.platform_handle)
+        );
+      },
+    )
+    .sort((left, right) => parseDateDescending(left.reviewed_at ?? left.created_at, right.reviewed_at ?? right.created_at));
+
+const resolveCampaignEligibilityAccounts = ({
+  requests,
+  rules,
+  selectedAccountIds,
+  dataOrigin,
+}: {
+  requests: VerificationRequestRecord[];
+  rules: readonly CampaignEligibilityRule[];
+  selectedAccountIds: Partial<Record<CampaignEligibilityPlatform, string>>;
+  dataOrigin: DataOrigin;
+}): { ok: true; accounts: ApprovedCampaignEligibilityAccount[] } | CampaignEligibilityFailure => {
+  const accounts: ApprovedCampaignEligibilityAccount[] = [];
+  for (const rule of rules) {
+    const candidates = getApprovedCampaignEligibilityRequests(
+      requests,
+      rule.platform,
+      dataOrigin,
+    );
+    if (candidates.length === 0) {
+      return {
+        ok: false,
+        status: 403,
+        code: "influencer_verification_required",
+        error: `${platformLabels[rule.platform]} 인증 계정을 먼저 등록해 주세요.`,
+        next_path: "/influencer/verification",
+      };
+    }
+
+    const selectedId = selectedAccountIds[rule.platform];
+    let selected = selectedId
+      ? candidates.find((candidate) => candidate.id === selectedId)
+      : undefined;
+    if (selectedId && !selected) {
+      return {
+        ok: false,
+        status: 422,
+        code: "platform_account_selection_invalid",
+        error: `${platformLabels[rule.platform]} 인증 계정을 다시 선택해 주세요.`,
+      };
+    }
+    if (!selected) {
+      const logicalAccounts = new Map<string, VerificationRequestRecord>();
+      for (const candidate of candidates) {
+        const handle = normalizeHandleForComparison(candidate.platform_handle);
+        if (handle && !logicalAccounts.has(handle)) logicalAccounts.set(handle, candidate);
+      }
+      if (logicalAccounts.size !== 1) {
+        return {
+          ok: false,
+          status: 422,
+          code: "platform_account_selection_required",
+          error: `${platformLabels[rule.platform]} 인증 계정을 선택해 주세요.`,
+        };
+      }
+      selected = logicalAccounts.values().next().value;
+    }
+    if (!selected) {
+      return {
+        ok: false,
+        status: 422,
+        code: "platform_account_selection_required",
+        error: `${platformLabels[rule.platform]} 인증 계정을 선택해 주세요.`,
+      };
+    }
+    accounts.push({ request: selected, platform: rule.platform });
+  }
+  return { ok: true, accounts };
+};
+
+const readFreshCampaignNaverMetric = async ({
+  profileId,
+  verificationRequestId,
+  dataOrigin,
+}: {
+  profileId: string;
+  verificationRequestId: string;
+  dataOrigin: DataOrigin;
+}) => {
+  const rows = await callSupabaseRpc<CampaignNaverMetricRpcRow[]>(
+    "get_campaign_naver_application_metric",
+    {
+      p_profile_id: profileId,
+      p_verification_request_id: verificationRequestId,
+      p_data_origin: dataOrigin,
+    },
+    "campaign Naver application metric read",
+  );
+  const value = normalizeVerificationMetricCount(
+    rows[0]?.average_daily_visitors_4d,
+  );
+  const checkedAt = normalizeOptionalText(rows[0]?.checked_at);
+  return value === undefined || !checkedAt ? undefined : { value, checkedAt };
+};
+
+const rememberCampaignNaverMetric = async ({
+  profileId,
+  verificationRequestId,
+  dataOrigin,
+  averageDailyVisitors4d,
+  checkedAt,
+}: {
+  profileId: string;
+  verificationRequestId: string;
+  dataOrigin: DataOrigin;
+  averageDailyVisitors4d: number;
+  checkedAt: string;
+}) => {
+  await callSupabaseRpc(
+    "upsert_campaign_naver_application_metric",
+    {
+      p_profile_id: profileId,
+      p_verification_request_id: verificationRequestId,
+      p_data_origin: dataOrigin,
+      p_average_daily_visitors_4d: averageDailyVisitors4d,
+      p_checked_at: checkedAt,
+    },
+    "campaign Naver application metric write",
+  );
+};
+
+const fetchCampaignNaverMetricSingleFlight = (
+  verificationRequestId: string,
+  blogId: string,
+) => {
+  const existing = naverCampaignEligibilityMetricInflight.get(
+    verificationRequestId,
+  );
+  if (existing) return existing;
+  const request = fetchNaverBlogVisitorMetric(blogId).finally(() => {
+    naverCampaignEligibilityMetricInflight.delete(verificationRequestId);
+  });
+  naverCampaignEligibilityMetricInflight.set(verificationRequestId, request);
+  return request;
+};
+
+const readNaverInfluencerEligibilityState = async ({
+  profileId,
+  verificationRequestId,
+  dataOrigin,
+}: {
+  profileId: string;
+  verificationRequestId: string;
+  dataOrigin: DataOrigin;
+}) => {
+  const rows = await callSupabaseRpc<NaverInfluencerEligibilityStateRpcRow[]>(
+    "get_naver_influencer_eligibility_state",
+    {
+      p_profile_id: profileId,
+      p_verification_request_id: verificationRequestId,
+      p_data_origin: dataOrigin,
+    },
+    "Naver Influencer eligibility state read",
+  );
+  const row = rows[0];
+  const automaticProfileId = normalizeOptionalText(row?.automatic_profile_id);
+  const automaticCheckedAt = normalizeOptionalText(row?.automatic_checked_at);
+  const automaticExpiresAt = normalizeOptionalText(row?.automatic_expires_at);
+  const selfProfileId = normalizeOptionalText(row?.self_profile_id);
+  const selfAttestationVersion = normalizeOptionalText(
+    row?.self_attestation_version,
+  );
+  const selfAttestedAt = normalizeOptionalText(row?.self_attested_at);
+  const selfExpiresAt = normalizeOptionalText(row?.self_expires_at);
+  return {
+    automatic:
+      automaticProfileId && automaticCheckedAt && automaticExpiresAt
+        ? {
+            profileId: automaticProfileId,
+            checkedAt: automaticCheckedAt,
+            expiresAt: automaticExpiresAt,
+          }
+        : undefined,
+    selfAttestation:
+      selfProfileId &&
+      selfAttestationVersion &&
+      selfAttestedAt &&
+      selfExpiresAt
+        ? {
+            profileId: selfProfileId,
+            version: selfAttestationVersion,
+            attestedAt: selfAttestedAt,
+            expiresAt: selfExpiresAt,
+          }
+        : undefined,
+  };
+};
+
+const isCredentialActiveAt = (expiresAt: string, now = Date.now()) => {
+  const expiresAtTime = new Date(expiresAt).getTime();
+  return Number.isFinite(expiresAtTime) && expiresAtTime > now;
+};
+
+const rememberNaverInfluencerQualification = async ({
+  profileId,
+  verificationRequestId,
+  dataOrigin,
+  influencerProfileId,
+  checkedAt,
+}: {
+  profileId: string;
+  verificationRequestId: string;
+  dataOrigin: DataOrigin;
+  influencerProfileId: string;
+  checkedAt: string;
+}) => {
+  await callSupabaseRpc(
+    "upsert_naver_influencer_qualification",
+    {
+      p_profile_id: profileId,
+      p_verification_request_id: verificationRequestId,
+      p_data_origin: dataOrigin,
+      p_influencer_profile_id: influencerProfileId,
+      p_checked_at: checkedAt,
+    },
+    "Naver Influencer automatic qualification write",
+  );
+  invalidateInfluencerDashboardCache();
+  clearPublicMarketplaceCache();
+};
+
+const rememberNaverInfluencerSelfAttestation = async ({
+  profileId,
+  verificationRequestId,
+  dataOrigin,
+  influencerProfileId,
+  attestedAt,
+}: {
+  profileId: string;
+  verificationRequestId: string;
+  dataOrigin: DataOrigin;
+  influencerProfileId: string;
+  attestedAt: string;
+}) => {
+  await callSupabaseRpc(
+    "upsert_naver_influencer_self_attestation",
+    {
+      p_profile_id: profileId,
+      p_verification_request_id: verificationRequestId,
+      p_data_origin: dataOrigin,
+      p_influencer_profile_id: influencerProfileId,
+      p_attestation_version: NAVER_INFLUENCER_ATTESTATION_VERSION,
+      p_attested_at: attestedAt,
+    },
+    "Naver Influencer self-attestation write",
+  );
+  invalidateInfluencerDashboardCache();
+};
+
+const encodeNaverInfluencerSelfAttestationChallenge = (
+  value: NaverInfluencerSelfAttestationChallenge,
+) => {
+  if (!shareTokenEncryptionSecret) return undefined;
+  const payload = Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
+  const signature = createHmac("sha256", shareTokenEncryptionSecret)
+    .update(`naver-influencer-attestation:${payload}`)
+    .digest("base64url");
+  return `${payload}.${signature}`;
+};
+
+const decodeNaverInfluencerSelfAttestationChallenge = (
+  value: unknown,
+): NaverInfluencerSelfAttestationChallenge | undefined => {
+  if (!shareTokenEncryptionSecret) return undefined;
+  const token = normalizeRequiredText(value);
+  const [payload, signature, extra] = token.split(".");
+  if (!payload || !signature || extra) return undefined;
+  const expected = createHmac("sha256", shareTokenEncryptionSecret)
+    .update(`naver-influencer-attestation:${payload}`)
+    .digest("base64url");
+  if (!safeEqual(signature, expected)) return undefined;
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(payload, "base64url").toString("utf8"),
+    ) as NaverInfluencerSelfAttestationChallenge;
+    const normalizedProfile = normalizeNaverInfluencerProfile(
+      parsed.influencerProfileId,
+    );
+    if (
+      parsed.version !== 1 ||
+      !isUuidText(parsed.profileId) ||
+      !isUuidText(parsed.verificationRequestId) ||
+      !hasText(parsed.campaignId) ||
+      !hasText(parsed.campaignRevision) ||
+      !normalizedProfile ||
+      normalizedProfile.profileId !== parsed.influencerProfileId ||
+      !Number.isFinite(parsed.issuedAt) ||
+      !Number.isFinite(parsed.expiresAt) ||
+      parsed.expiresAt <= Date.now() ||
+      parsed.expiresAt - parsed.issuedAt !==
+        NAVER_INFLUENCER_ATTESTATION_CHALLENGE_TTL_MS
+    ) {
+      return undefined;
+    }
+    return parsed;
+  } catch {
+    return undefined;
+  }
+};
+
+const readNaverInfluencerAttestationSubmission = (body: Record<string, unknown>) => {
+  const raw =
+    body.naverInfluencerSelfAttestation ??
+    body.naver_influencer_self_attestation;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const record = raw as Record<string, unknown>;
+  return {
+    accepted: record.accepted === true,
+    challenge: normalizeOptionalText(record.challenge),
+  };
+};
+
+const fetchNaverInfluencerConnectionSingleFlight = (
+  verificationRequestId: string,
+  profileId: string,
+  approvedBlogId: string,
+) => {
+  const key = `${verificationRequestId}:${profileId}`;
+  const existing = naverInfluencerEligibilityInflight.get(key);
+  if (existing) return existing;
+  const request = checkNaverInfluencerProfileConnection(
+    profileId,
+    approvedBlogId,
+  ).finally(() => {
+    naverInfluencerEligibilityInflight.delete(key);
+  });
+  naverInfluencerEligibilityInflight.set(key, request);
+  return request;
+};
+
+const buildCampaignEligibilityNotMet = (
+  rule: CampaignEligibilityRule,
+): CampaignEligibilityFailure => ({
+  ok: false,
+  status: 422,
+  code: "condition_not_met",
+  error: `${formatCampaignEligibilityRule(rule)} 조건에 아직 닿지 않았어요. 조건을 충족하는 인증 계정으로 신청해 주세요.`,
+});
+
+const evaluateNaverInfluencerCampaignEligibility = async ({
+  auth,
+  campaign,
+  campaignRevision,
+  body,
+  account,
+  dataOrigin,
+}: {
+  auth: InfluencerSession;
+  campaign: MarketplaceCampaignPost;
+  campaignRevision: string;
+  body: Record<string, unknown>;
+  account: ApprovedCampaignEligibilityAccount;
+  dataOrigin: DataOrigin;
+}): Promise<CampaignEligibilityEvaluation | CampaignEligibilityFailure> => {
+  const decisionAt = new Date().toISOString();
+  const approvedBlogId =
+    normalizeNaverBlogIdentity(account.request.platform_handle ?? "") ||
+    normalizeNaverBlogIdentity(account.request.platform_url ?? "");
+  if (!approvedBlogId) {
+    return {
+      ok: false,
+      status: 422,
+      code: "platform_account_selection_invalid",
+      error: "네이버 블로그 인증 계정을 다시 확인해 주세요.",
+    };
+  }
+
+  let state: Awaited<ReturnType<typeof readNaverInfluencerEligibilityState>>;
+  try {
+    state = await readNaverInfluencerEligibilityState({
+      profileId: auth.profile.id,
+      verificationRequestId: account.request.id,
+      dataOrigin,
+    });
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "metric_unavailable",
+      error: "네이버 인플루언서 자격 정보를 지금 확인하지 못했어요. 잠시 후 다시 신청해 주세요.",
+      retryable: true,
+    };
+  }
+
+  if (
+    state.automatic &&
+    isCredentialActiveAt(state.automatic.expiresAt)
+  ) {
+    const profile = normalizeNaverInfluencerProfile(state.automatic.profileId);
+    if (profile) {
+      return {
+        ok: true,
+        evidence: [{
+          platform: "naver_blog",
+          metric: "naver_influencer",
+          verificationRequestId: account.request.id,
+          evidenceType: "auto_verified",
+          profileUrl: profile.profileUrl,
+          evidenceAt: state.automatic.checkedAt,
+          decisionAt,
+        }],
+      };
+    }
+  }
+
+  if (
+    state.selfAttestation &&
+    isCredentialActiveAt(state.selfAttestation.expiresAt)
+  ) {
+    const profile = normalizeNaverInfluencerProfile(
+      state.selfAttestation.profileId,
+    );
+    if (profile) {
+      return {
+        ok: true,
+        evidence: [{
+          platform: "naver_blog",
+          metric: "naver_influencer",
+          verificationRequestId: account.request.id,
+          evidenceType: "self_attested",
+          profileUrl: profile.profileUrl,
+          evidenceAt: state.selfAttestation.attestedAt,
+          decisionAt,
+          attestationVersion: state.selfAttestation.version,
+        }],
+      };
+    }
+  }
+
+  const submittedProfile = normalizeNaverInfluencerProfileUrl(
+    normalizeRequiredText(
+      body.naverInfluencerProfileUrl ?? body.naver_influencer_profile_url,
+    ),
+  );
+  const fallbackProfile = normalizeNaverInfluencerProfile(
+    state.automatic?.profileId ?? state.selfAttestation?.profileId ?? "",
+  );
+  const profile = submittedProfile ?? fallbackProfile;
+  if (!profile) {
+    return {
+      ok: false,
+      status: 422,
+      code: "naver_influencer_profile_required",
+      error: "네이버 인플루언서 홈 주소를 입력해 주세요.",
+    };
+  }
+
+  const attestation = readNaverInfluencerAttestationSubmission(body);
+  if (attestation?.accepted || attestation?.challenge) {
+    const challenge = decodeNaverInfluencerSelfAttestationChallenge(
+      attestation.challenge,
+    );
+    if (
+      !attestation.accepted ||
+      !challenge ||
+      challenge.profileId !== auth.profile.id ||
+      challenge.verificationRequestId !== account.request.id ||
+      challenge.campaignId !== campaign.id ||
+      challenge.campaignRevision !== campaignRevision ||
+      challenge.influencerProfileId !== profile.profileId
+    ) {
+      return {
+        ok: false,
+        status: 422,
+        code: "naver_influencer_attestation_invalid",
+        error: "본인 확인 시간이 지났습니다. 공개 프로필 연결 확인을 다시 진행해 주세요.",
+      };
+    }
+    try {
+      await rememberNaverInfluencerSelfAttestation({
+        profileId: auth.profile.id,
+        verificationRequestId: account.request.id,
+        dataOrigin,
+        influencerProfileId: profile.profileId,
+        attestedAt: decisionAt,
+      });
+    } catch {
+      const refreshed = await readNaverInfluencerEligibilityState({
+        profileId: auth.profile.id,
+        verificationRequestId: account.request.id,
+        dataOrigin,
+      }).catch(() => undefined);
+      if (
+        refreshed?.automatic &&
+        isCredentialActiveAt(refreshed.automatic.expiresAt)
+      ) {
+        const automaticProfile = normalizeNaverInfluencerProfile(
+          refreshed.automatic.profileId,
+        );
+        if (automaticProfile) {
+          return {
+            ok: true,
+            evidence: [{
+              platform: "naver_blog",
+              metric: "naver_influencer",
+              verificationRequestId: account.request.id,
+              evidenceType: "auto_verified",
+              profileUrl: automaticProfile.profileUrl,
+              evidenceAt: refreshed.automatic.checkedAt,
+              decisionAt,
+            }],
+          };
+        }
+      }
+      return {
+        ok: false,
+        status: 503,
+        code: "metric_unavailable",
+        error: "본인 확인을 지금 저장하지 못했어요. 잠시 후 다시 신청해 주세요.",
+        retryable: true,
+      };
+    }
+    return {
+      ok: true,
+      evidence: [{
+        platform: "naver_blog",
+        metric: "naver_influencer",
+        verificationRequestId: account.request.id,
+        evidenceType: "self_attested",
+        profileUrl: profile.profileUrl,
+        evidenceAt: decisionAt,
+        decisionAt,
+        attestationVersion: NAVER_INFLUENCER_ATTESTATION_VERSION,
+      }],
+    };
+  }
+
+  const check = await fetchNaverInfluencerConnectionSingleFlight(
+    account.request.id,
+    profile.profileId,
+    approvedBlogId,
+  );
+  if (check?.status === "verified") {
+    try {
+      await rememberNaverInfluencerQualification({
+        profileId: auth.profile.id,
+        verificationRequestId: account.request.id,
+        dataOrigin,
+        influencerProfileId: check.profileId,
+        checkedAt: check.checkedAt,
+      });
+    } catch {
+      return {
+        ok: false,
+        status: 503,
+        code: "metric_unavailable",
+        error: "네이버 인플루언서 자격을 지금 저장하지 못했어요. 잠시 후 다시 신청해 주세요.",
+        retryable: true,
+      };
+    }
+    return {
+      ok: true,
+      evidence: [{
+        platform: "naver_blog",
+        metric: "naver_influencer",
+        verificationRequestId: account.request.id,
+        evidenceType: "auto_verified",
+        profileUrl: check.profileUrl,
+        evidenceAt: check.checkedAt,
+        decisionAt,
+      }],
+    };
+  }
+  if (check?.status === "not_linked" || check?.status === "not_found") {
+    return {
+      ok: false,
+      status: 422,
+      code: "condition_not_met",
+      error:
+        "입력한 네이버 인플루언서 홈에서 선택한 인증 블로그 연결을 확인하지 못했어요.",
+    };
+  }
+
+  const now = Date.now();
+  const challenge = encodeNaverInfluencerSelfAttestationChallenge({
+    version: 1,
+    profileId: auth.profile.id,
+    verificationRequestId: account.request.id,
+    campaignId: campaign.id,
+    campaignRevision,
+    influencerProfileId: profile.profileId,
+    issuedAt: now,
+    expiresAt: now + NAVER_INFLUENCER_ATTESTATION_CHALLENGE_TTL_MS,
+  });
+  return {
+    ok: false,
+    status: 503,
+    code: "naver_influencer_check_unavailable",
+    error:
+      "공개 프로필 연결을 지금 자동 확인하지 못했어요. 본인 확인으로 신청을 계속할 수 있습니다.",
+    retryable: true,
+    self_attestation_available: Boolean(challenge),
+    ...(challenge ? { self_attestation_challenge: challenge } : {}),
+    naver_influencer_profile_url: profile.profileUrl,
+    self_attestation_version: NAVER_INFLUENCER_ATTESTATION_VERSION,
+  };
+};
+
+const evaluateCampaignEligibilityRule = async ({
+  auth,
+  campaign,
+  campaignRevision,
+  body,
+  rule,
+  account,
+  dataOrigin,
+}: {
+  auth: InfluencerSession;
+  campaign: MarketplaceCampaignPost;
+  campaignRevision: string;
+  body: Record<string, unknown>;
+  rule: CampaignEligibilityRule;
+  account: ApprovedCampaignEligibilityAccount;
+  dataOrigin: DataOrigin;
+}): Promise<CampaignEligibilityEvaluation | CampaignEligibilityFailure> => {
+  if (rule.platform === "instagram" || rule.platform === "youtube") {
+    const decisionAt = new Date().toISOString();
+    if (rule.platform === "instagram") {
+      const accountHandle = normalizeInstagramUsername(
+        account.request.platform_handle,
+      );
+      const metric = await readTrustedInstagramFollowerMetricForRequest(
+        account.request,
+      );
+      if (!metric || !accountHandle) {
+        return {
+          ok: false,
+          status: 503,
+          code: "metric_unavailable",
+          error:
+            "인스타그램 팔로워 수가 아직 확인되지 않았어요. 인증 계정의 최신 수치를 확인한 뒤 다시 신청해 주세요.",
+          retryable: true,
+        };
+      }
+      if (metric.followerCount < rule.minimum) {
+        return buildCampaignEligibilityNotMet(rule);
+      }
+      return {
+        ok: true,
+        evidence: [
+          {
+            platform: "instagram",
+            metric: "follower_count",
+            verificationRequestId: account.request.id,
+            count: metric.followerCount,
+            minimum: rule.minimum,
+            source: metric.source,
+            evidenceAt: metric.checkedAt,
+            decisionAt,
+            accountHandle,
+            accountUrl: `https://www.instagram.com/${accountHandle}/`,
+          },
+        ],
+      };
+    }
+    const channel: SupabaseMarketplaceInfluencerChannelRow = {
+      id: account.request.id,
+      profile_id: auth.profile.id,
+      platform: "youtube",
+      label: platformLabels.youtube,
+      handle: account.request.platform_handle ?? "",
+      url: account.request.platform_url,
+    };
+    const snapshot = await fetchYoutubeFollowerSnapshot(channel);
+    if (snapshot.status !== "synced" || snapshot.followerCount === undefined) {
+      return {
+        ok: false,
+        status: 503,
+        code: "metric_unavailable",
+        error:
+          "유튜브 구독자 수를 지금 확인하지 못했어요. 잠시 후 다시 신청해 주세요.",
+        retryable: true,
+      };
+    }
+    if (snapshot.followerCount < rule.minimum) {
+      return buildCampaignEligibilityNotMet(rule);
+    }
+    return {
+      ok: true,
+      evidence: [
+        {
+          platform: "youtube",
+          metric: "subscriber_count",
+          verificationRequestId: account.request.id,
+          count: snapshot.followerCount,
+          minimum: rule.minimum,
+          source: "youtube_data_api",
+          evidenceAt: snapshot.checkedAt,
+          decisionAt,
+        },
+      ],
+    };
+  }
+
+  if (rule.metric === "naver_influencer") {
+    return evaluateNaverInfluencerCampaignEligibility({
+      auth,
+      campaign,
+      campaignRevision,
+      body,
+      account,
+      dataOrigin,
+    });
+  }
+
+  let cachedMetric: { value: number; checkedAt: string } | undefined;
+  try {
+    cachedMetric = await readFreshCampaignNaverMetric({
+      profileId: auth.profile.id,
+      verificationRequestId: account.request.id,
+      dataOrigin,
+    });
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "metric_unavailable",
+      error: "네이버 블로그 방문자 수를 지금 확인하지 못했어요. 잠시 후 다시 신청해 주세요.",
+      retryable: true,
+    };
+  }
+  if (cachedMetric) {
+    return cachedMetric.value >= rule.minimum
+      ? { ok: true }
+      : buildCampaignEligibilityNotMet(rule);
+  }
+
+  const blogId =
+    extractNaverBlogId(account.request.platform_handle) ||
+    extractNaverBlogId(account.request.platform_url);
+  const metric = await fetchCampaignNaverMetricSingleFlight(
+    account.request.id,
+    blogId,
+  );
+  if (metric.status === "counter_private") {
+    return {
+      ok: false,
+      status: 422,
+      code: "naver_counter_private",
+      error:
+        "네이버 블로그 방문자 수를 아직 확인할 수 없어 신청을 진행하기 어려워요. 방문자 수 카운터를 공개하면 자동 확인 후 신청할 수 있습니다.",
+    };
+  }
+  if (metric.status !== "available") {
+    return {
+      ok: false,
+      status: 503,
+      code: "metric_unavailable",
+      error: "네이버 블로그 방문자 수를 지금 확인하지 못했어요. 잠시 후 다시 신청해 주세요.",
+      retryable: true,
+    };
+  }
+  try {
+    await rememberCampaignNaverMetric({
+      profileId: auth.profile.id,
+      verificationRequestId: account.request.id,
+      dataOrigin,
+      averageDailyVisitors4d: metric.averageDailyVisitors4d,
+      checkedAt: metric.checkedAt,
+    });
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "metric_unavailable",
+      error: "네이버 블로그 방문자 수를 지금 확인하지 못했어요. 잠시 후 다시 신청해 주세요.",
+      retryable: true,
+    };
+  }
+  return metric.averageDailyVisitors4d >= rule.minimum
+    ? { ok: true }
+    : buildCampaignEligibilityNotMet(rule);
+};
+
+const evaluateCampaignEligibility = async ({
+  auth,
+  campaign,
+  campaignRevision,
+  body,
+  requests,
+}: {
+  auth: InfluencerSession;
+  campaign: MarketplaceCampaignPost;
+  campaignRevision: string;
+  body: Record<string, unknown>;
+  requests: VerificationRequestRecord[];
+}): Promise<CampaignEligibilityEvaluation | CampaignEligibilityFailure> => {
+  const rules = campaign.eligibilityRules ?? [];
+  if (rules.length === 0) return { ok: true };
+  const selectedAccounts = readCampaignEligibilityAccountIds(body, rules);
+  if (!selectedAccounts.ok) return selectedAccounts;
+  const dataOrigin = await readTrustedProfileDataOrigin(auth.profile.id);
+  const resolvedAccounts = resolveCampaignEligibilityAccounts({
+    requests,
+    rules,
+    selectedAccountIds: selectedAccounts.accountIds,
+    dataOrigin,
+  });
+  if (!resolvedAccounts.ok) return resolvedAccounts;
+  const results = await Promise.all(
+    rules.map((rule) => {
+      const account = resolvedAccounts.accounts.find(
+        (candidate) => candidate.platform === rule.platform,
+      );
+      return account
+        ? evaluateCampaignEligibilityRule({
+            auth,
+            campaign,
+            campaignRevision,
+            body,
+            rule,
+            account,
+            dataOrigin,
+          })
+        : Promise.resolve<CampaignEligibilityFailure>({
+            ok: false,
+            status: 422,
+            code: "platform_account_selection_invalid",
+            error: `${platformLabels[rule.platform]} 인증 계정을 다시 선택해 주세요.`,
+          });
+    }),
+  );
+  const failure = results.find((result) => !result.ok);
+  if (failure) return failure;
+  const decisionAt = new Date().toISOString();
+  const evidence = results.flatMap((result) =>
+    result.ok
+      ? (result.evidence ?? []).map((item) => ({ ...item, decisionAt }))
+      : [],
+  );
+  return {
+    ok: true,
+    ...(evidence.length > 0 ? { evidence } : {}),
+  };
+};
+
 const hasApprovedInfluencerPlatformVerification = async (
   auth: InfluencerSession,
+  requests?: VerificationRequestRecord[],
 ) => {
-  const requests = await getInfluencerVerificationRequestsForAuth(auth);
-  return requests.some(
+  const verificationRequests =
+    requests ?? (await getInfluencerVerificationRequestsForAuth(auth));
+  return verificationRequests.some(
     (request) =>
       request.target_type === "influencer_account" &&
       request.verification_type === "platform_account" &&
@@ -19498,7 +20764,8 @@ const submitMarketplaceCampaignApplication = async (
     };
   }
 
-  if (!(await hasApprovedInfluencerPlatformVerification(auth))) {
+  const verificationRequests = await getInfluencerVerificationRequestsForAuth(auth);
+  if (!(await hasApprovedInfluencerPlatformVerification(auth, verificationRequests))) {
     return {
       ok: false as const,
       status: 403,
@@ -19507,6 +20774,15 @@ const submitMarketplaceCampaignApplication = async (
       next_path: "/influencer/verification" as const,
     };
   }
+
+  const eligibility = await evaluateCampaignEligibility({
+    auth,
+    campaign,
+    campaignRevision: applicationTarget.campaignRevision,
+    body,
+    requests: verificationRequests,
+  });
+  if (eligibility.ok === false) return eligibility;
 
   const publicProfile = await readInfluencerMarketplaceProfileForApplication(auth);
   const senderName =
@@ -19562,6 +20838,18 @@ const submitMarketplaceCampaignApplication = async (
             campaign,
             applicationTarget.campaignRevision,
           ),
+          ...(eligibility.evidence
+            ? {
+                application_eligibility_snapshot: {
+                  version: CAMPAIGN_ELIGIBILITY_SNAPSHOT_VERSION,
+                  actorProfileId: auth.profile.id,
+                  campaignId: campaign.id,
+                  campaignRevision: applicationTarget.campaignRevision,
+                  decisionAt: eligibility.evidence[0].decisionAt,
+                  items: eligibility.evidence,
+                } satisfies MarketplaceApplicationEligibilitySnapshot,
+              }
+            : {}),
           application_consent_snapshot: {
             version: consent.version,
             items: consent.items,
@@ -20398,6 +21686,20 @@ const mapMarketplaceProposalToMessage = (
         row.application_contact_snapshot,
       )
     : undefined;
+  const applicationEligibilitySnapshot =
+    row.direction === "influencer_to_brand" && row.campaign_id
+      ? normalizeMarketplaceApplicationEligibilitySnapshot(
+          row.application_eligibility_snapshot,
+        )
+      : undefined;
+  const naverInfluencerEvidence = applicationEligibilitySnapshot?.items.find(
+    (item): item is CampaignNaverInfluencerEvidence =>
+      item.platform === "naver_blog" && item.metric === "naver_influencer",
+  );
+  const audienceEvidence = applicationEligibilitySnapshot?.items.filter(
+    (item): item is CampaignAudienceMetricEvidence =>
+      item.platform === "instagram" || item.platform === "youtube",
+  );
 
   return {
     id: row.id,
@@ -20439,6 +21741,34 @@ const mapMarketplaceProposalToMessage = (
     campaignTitle: campaignSnapshot?.title ?? undefined,
     ...(applicationContactSnapshot
       ? { applicationContact: applicationContactSnapshot.contact }
+      : {}),
+    ...(naverInfluencerEvidence
+      ? {
+          naverInfluencerEvidence: {
+            evidenceType: naverInfluencerEvidence.evidenceType,
+            profileUrl: naverInfluencerEvidence.profileUrl,
+            evidenceAt: naverInfluencerEvidence.evidenceAt,
+            decisionAt: naverInfluencerEvidence.decisionAt,
+          },
+        }
+      : {}),
+    ...(audienceEvidence?.length
+      ? {
+          applicationAudienceEvidence: audienceEvidence.map((item) => ({
+            platform: item.platform,
+            metric: item.metric,
+            count: item.count,
+            minimum: item.minimum,
+            evidenceAt: item.evidenceAt,
+            decisionAt: item.decisionAt,
+            ...(item.accountHandle && item.accountUrl
+              ? {
+                  accountHandle: item.accountHandle,
+                  accountUrl: item.accountUrl,
+                }
+              : {}),
+          })),
+        }
       : {}),
     convertedContractId: row.converted_contract_id ?? undefined,
     createdAt: row.created_at,
@@ -20735,17 +22065,16 @@ const addPlatformInfoToMarketplaceProposals = async (
   >();
   for (const channel of channelRows) {
     const channels = channelsByProfileId.get(channel.profile_id) ?? [];
-    const naverSelfReport = readNaverSelfReportedMarketplaceMetric(channel);
     const isNaverBlog = channel.platform === "naver_blog";
     const hasMisplacedNaverSelfReport =
       hasMisplacedNaverSelfReportProvenance(channel);
     const followersLabel = isNaverBlog
-      ? naverSelfReport?.followersLabel
+      ? undefined
       : hasMisplacedNaverSelfReport
         ? undefined
         : channel.followers_label ?? undefined;
     const performanceLabel = isNaverBlog
-      ? (naverSelfReport?.performanceLabel ?? "자가신고 미입력")
+      ? "계정 인증 완료"
       : hasMisplacedNaverSelfReport
         ? undefined
         : channel.performance_label ?? undefined;
@@ -20756,9 +22085,6 @@ const addPlatformInfoToMarketplaceProposals = async (
       url: channel.url ?? undefined,
       followersLabel,
       performanceLabel,
-      ...(naverSelfReport
-        ? { metricTrust: naverSelfReport.metricTrust }
-        : {}),
     });
     channelsByProfileId.set(channel.profile_id, channels);
   }
@@ -24045,18 +25371,113 @@ const getInfluencerVerificationRequestsForAuth = async (
   );
 };
 
-const buildApprovedInfluencerPlatforms = (
+const buildApprovedInfluencerPlatforms = async (
   requests: VerificationRequestRecord[],
-): InfluencerDashboardResponse["verification"]["approved_platforms"] =>
-  [...requests]
+): Promise<InfluencerDashboardResponse["verification"]["approved_platforms"]> => {
+  const approved = [...requests]
     .filter((request) => request.status === "approved" && request.platform && request.platform_handle)
     .sort((a, b) => parseDateAscending(a.created_at, b.created_at))
     .map((request) => ({
+      request_id: request.id,
       platform: request.platform!,
       handle: request.platform_handle!,
       url: request.platform_url,
       approved_at: request.reviewed_at,
     }));
+
+  return Promise.all(
+    approved.map(async (platform) => {
+      if (platform.platform === "instagram") {
+        const request = requests.find(
+          (candidate) => candidate.id === platform.request_id,
+        );
+        const metric = request
+          ? await readTrustedInstagramFollowerMetricForRequest(request).catch(
+              () => undefined,
+            )
+          : undefined;
+        return metric
+          ? {
+              ...platform,
+              instagram_follower: {
+                count: metric.followerCount,
+                checked_at: metric.checkedAt,
+                source: metric.source,
+              },
+            }
+          : platform;
+      }
+      if (platform.platform !== "naver_blog") return platform;
+      const request = requests.find((candidate) => candidate.id === platform.request_id);
+      const profileId = request?.profile_id ?? request?.target_id;
+      if (!profileId || !isUuidText(profileId)) return platform;
+      const dataOrigin =
+        normalizeDataOrigin(request?.data_origin) ??
+        (request && isOperationalTestVerificationRequest(request)
+          ? "qa"
+          : "production");
+      const state = await readNaverInfluencerEligibilityState({
+        profileId,
+        verificationRequestId: platform.request_id,
+        dataOrigin,
+      }).catch(() => undefined);
+      if (!state) return platform;
+      const automaticActive =
+        state.automatic && isCredentialActiveAt(state.automatic.expiresAt);
+      const selfActive =
+        state.selfAttestation &&
+        isCredentialActiveAt(state.selfAttestation.expiresAt);
+      const credential = automaticActive
+        ? {
+            evidence_type: "auto_verified" as const,
+            status: "active" as const,
+            profileId: state.automatic!.profileId,
+            evidenceAt: state.automatic!.checkedAt,
+            expiresAt: state.automatic!.expiresAt,
+          }
+        : selfActive
+          ? {
+              evidence_type: "self_attested" as const,
+              status: "active" as const,
+              profileId: state.selfAttestation!.profileId,
+              evidenceAt: state.selfAttestation!.attestedAt,
+              expiresAt: state.selfAttestation!.expiresAt,
+            }
+          : state.automatic
+            ? {
+                evidence_type: "auto_verified" as const,
+                status: "expired" as const,
+                profileId: state.automatic.profileId,
+                evidenceAt: state.automatic.checkedAt,
+                expiresAt: state.automatic.expiresAt,
+              }
+            : state.selfAttestation
+              ? {
+                  evidence_type: "self_attested" as const,
+                  status: "expired" as const,
+                  profileId: state.selfAttestation.profileId,
+                  evidenceAt: state.selfAttestation.attestedAt,
+                  expiresAt: state.selfAttestation.expiresAt,
+                }
+              : undefined;
+      const normalizedProfile = credential
+        ? normalizeNaverInfluencerProfile(credential.profileId)
+        : undefined;
+      return credential && normalizedProfile
+        ? {
+            ...platform,
+            naver_influencer: {
+              evidence_type: credential.evidence_type,
+              status: credential.status,
+              profile_url: normalizedProfile.profileUrl,
+              evidence_at: credential.evidenceAt,
+              expires_at: credential.expiresAt,
+            },
+          }
+        : platform;
+    }),
+  );
+};
 
 const deriveVerificationStatus = (
   requests: VerificationRequestRecord[],
@@ -24093,7 +25514,6 @@ const sanitizeVerificationRequestForSummary = (
     platform,
     platform_handle,
     platform_url,
-    naver_blog_recent_4d_average_visitors,
     ownership_verification_method,
     ownership_check_status,
     ownership_checked_at,
@@ -24124,7 +25544,6 @@ const sanitizeVerificationRequestForSummary = (
     platform,
     platform_handle,
     platform_url,
-    naver_blog_recent_4d_average_visitors,
     ownership_verification_method,
     ownership_check_status,
     ownership_checked_at,
@@ -24427,7 +25846,7 @@ const buildInfluencerScopedVerificationSummary = async (
     requests,
     auth.profile.verification_status ?? "not_submitted",
   );
-  const approvedPlatforms = buildApprovedInfluencerPlatforms(requests);
+  const approvedPlatforms = await buildApprovedInfluencerPlatforms(requests);
 
   return {
     advertiser: emptyVerificationProfile(
@@ -26475,7 +27894,9 @@ const buildInfluencerDashboardFromLocal = async (
     (profile?.verification_status as VerificationStatus | undefined) ??
       "not_submitted",
   );
-  const approvedPlatforms = buildApprovedInfluencerPlatforms(verificationRequests);
+  const approvedPlatforms = await buildApprovedInfluencerPlatforms(
+    verificationRequests,
+  );
   const nextDeadline = dashboardContracts
     .map((contract) => contract.due_at)
     .filter((value): value is string => hasText(value))
@@ -26754,7 +28175,9 @@ const buildInfluencerDashboardFromRemote = async (
     (profile?.verification_status as VerificationStatus | undefined) ??
       "not_submitted",
   );
-  const approvedPlatforms = buildApprovedInfluencerPlatforms(verificationRequests);
+  const approvedPlatforms = await buildApprovedInfluencerPlatforms(
+    verificationRequests,
+  );
   const nextDeadline = dashboardContracts
     .map((contract) => contract.due_at)
     .filter((value): value is string => hasText(value))
@@ -27140,6 +28563,88 @@ const sanitizeDeliverableMetadataForClient = (
   delete safeMetadata.proof_file;
 
   return safeMetadata;
+};
+
+const fetchApprovedInstagramReelMetricsForProfile = async ({
+  profileId,
+  reelUrl,
+}: {
+  profileId: string;
+  reelUrl: string;
+}): Promise<InstagramReelPublicMetrics | undefined> => {
+  if (!normalizeInstagramReelUrl(reelUrl)) return undefined;
+  const approvedInstagramRequests = (await readVerificationRequests())
+    .filter(
+      (candidate) =>
+        candidate.status === "approved" &&
+        candidate.platform === "instagram" &&
+        candidate.ownership_verification_method === "instagram_dm_code" &&
+        candidate.data_origin === "production" &&
+        !isOperationalTestVerificationRequest(candidate) &&
+        (candidate.profile_id === profileId || candidate.target_id === profileId) &&
+        Boolean(normalizeHandleForComparison(candidate.platform_handle)),
+    )
+    .sort((left, right) => parseDateDescending(left.created_at, right.created_at))
+    .slice(0, 5);
+  const checkedAt = new Date().toISOString();
+  if (approvedInstagramRequests.length === 0) {
+    return {
+      status: "unavailable",
+      provider: "instagram_graph_api",
+      scope: "business_discovery_public",
+      checked_at: checkedAt,
+    };
+  }
+  const results = await Promise.all(
+    approvedInstagramRequests.map((candidate) =>
+      fetchInstagramReelPublicMetrics({
+        accessToken: metaBusinessDiscoveryAccessToken,
+        igUserId: process.env.META_IG_USER_ID?.trim(),
+        graphVersion: process.env.META_GRAPH_API_VERSION?.trim() || "v24.0",
+        username: candidate.platform_handle ?? "",
+        reelUrl,
+      }),
+    ),
+  );
+  return (
+    results.find((result) => result.status === "available") ?? {
+      status: "unavailable",
+      provider: "instagram_graph_api",
+      scope: "business_discovery_public",
+      checked_at: checkedAt,
+    }
+  );
+};
+
+const refreshDeliverableInstagramReelMetrics = async ({
+  deliverable,
+  profileId,
+}: {
+  deliverable: SupabaseDeliverableRow;
+  profileId: string;
+}) => {
+  const reelUrl = normalizeOptionalText(deliverable.url);
+  if (!reelUrl || !normalizeInstagramReelUrl(reelUrl)) return undefined;
+  const metrics = await fetchApprovedInstagramReelMetricsForProfile({
+    profileId,
+    reelUrl,
+  });
+  if (!metrics) return undefined;
+  await patchSupabaseRecord(
+    "deliverables",
+    `?id=eq.${encodeURIComponent(deliverable.id)}&contract_id=eq.${encodeURIComponent(
+      deliverable.contract_id,
+    )}`,
+    {
+      metadata: {
+        ...(deliverable.metadata ?? {}),
+        instagram_reel_metrics: metrics,
+      },
+      updated_at: new Date().toISOString(),
+    },
+    "deliverable Instagram metrics",
+  );
+  return metrics;
 };
 
 const sanitizeDeliverableForClient = (deliverable: SupabaseDeliverableRow) => ({
@@ -30821,7 +32326,7 @@ app.post(
   "/api/marketplace/campaigns/:campaignId/applications",
   async (request, response, next) => {
     try {
-      response.setHeader("Cache-Control", "private, no-store");
+      setFreshPublicMarketplaceHeaders(response);
       const influencerAuth = await requireInfluencerSession(request, response);
       if (!influencerAuth) return;
 
@@ -30841,8 +32346,11 @@ app.post(
         request.body && typeof request.body === "object" ? request.body : {},
       );
 
-      if (!result.ok) {
+      if (result.ok === false) {
         const { ok: _ok, status, ...payload } = result;
+        if ("code" in payload && payload.code === "metric_unavailable") {
+          response.setHeader("Retry-After", "5");
+        }
         response.status(status).json(payload);
         return;
       }
@@ -31922,6 +33430,71 @@ app.get("/api/verification/status", async (request, response, next) => {
   }
 });
 
+app.post(
+  "/api/influencer/verification/instagram/:requestId/followers/refresh",
+  async (request, response, next) => {
+    try {
+      response.setHeader("Cache-Control", "private, no-store");
+      response.setHeader("Vary", "Cookie");
+      const throttle = await consumeSensitiveEndpointRateLimit(
+        request,
+        "instagram_follower_refresh",
+        request.params.requestId,
+      );
+      if (throttle.blocked) {
+        sendSensitiveRateLimitResponse(response, throttle);
+        return;
+      }
+      const auth = await requireInfluencerSession(request, response);
+      if (!auth) return;
+      const requests = await getInfluencerVerificationRequestsForAuth(auth);
+      const verificationRequest = requests.find(
+        (candidate) =>
+          candidate.id === request.params.requestId &&
+          candidate.status === "approved" &&
+          candidate.platform === "instagram" &&
+          candidate.ownership_verification_method === "instagram_dm_code" &&
+          candidate.data_origin === "production" &&
+          !isOperationalTestVerificationRequest(candidate),
+      );
+      if (!verificationRequest) {
+        response.status(404).json({
+          error: "새로고침할 인스타그램 인증 계정을 찾지 못했어요.",
+        });
+        return;
+      }
+      const existing = await readTrustedInstagramFollowerMetricForRequest(
+        verificationRequest,
+      );
+      const refreshed = await refreshCampaignInstagramFollowerMetric({
+        profileId: auth.profile.id,
+        request: verificationRequest,
+      });
+      if (!refreshed) {
+        response.status(503).json({
+          code: "metric_unavailable",
+          error: existing
+            ? "최신 팔로워 수를 확인하지 못했어요. 인증 당시 값은 그대로 사용할 수 있습니다."
+            : "최신 팔로워 수를 확인하지 못했어요. 잠시 후 다시 시도해 주세요.",
+          preserved: Boolean(existing),
+        });
+        return;
+      }
+      invalidateInfluencerDashboardCache();
+      await clearPublicMarketplaceCache();
+      response.json({
+        instagram_follower: {
+          count: refreshed.followerCount,
+          checked_at: refreshed.checkedAt,
+          source: refreshed.source,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 app.post("/api/verification/advertiser", async (request, response, next) => {
   try {
     response.setHeader("Cache-Control", "private, no-store");
@@ -32170,16 +33743,6 @@ app.post("/api/verification/influencer", async (request, response, next) => {
     const platformAccessToken = normalizeOptionalText(
       request.body?.platform_access_token,
     );
-    const hasNaverBlogVisitorReport = Object.prototype.hasOwnProperty.call(
-      request.body ?? {},
-      "naver_blog_recent_4d_average_visitors",
-    );
-    const rawNaverBlogVisitorReport =
-      request.body?.naver_blog_recent_4d_average_visitors;
-    const naverBlogVisitorReport =
-      rawNaverBlogVisitorReport === "" || rawNaverBlogVisitorReport == null
-        ? undefined
-        : normalizeVerificationMetricCount(rawNaverBlogVisitorReport);
     const note = normalizeOptionalText(request.body?.note);
     const evidenceFile = parseEvidenceFile(request.body?.evidence_file);
     const evidenceError = evidenceFile
@@ -32192,34 +33755,6 @@ app.post("/api/verification/influencer", async (request, response, next) => {
     }
     if (!influencerPlatforms.has(platform)) {
       response.status(422).json({ error: "Valid platform is required" });
-      return;
-    }
-    if (hasNaverBlogVisitorReport && platform !== "naver_blog") {
-      response.status(422).json({
-        error: "Naver Blog visitor report is only available for Naver Blog",
-      });
-      return;
-    }
-    if (
-      platform === "naver_blog" &&
-      (!hasNaverBlogVisitorReport ||
-        rawNaverBlogVisitorReport === "" ||
-        rawNaverBlogVisitorReport == null)
-    ) {
-      response.status(422).json({
-        error: "Naver Blog visitor report is required",
-      });
-      return;
-    }
-    if (
-      platform === "naver_blog" &&
-      rawNaverBlogVisitorReport !== "" &&
-      rawNaverBlogVisitorReport != null &&
-      naverBlogVisitorReport === undefined
-    ) {
-      response.status(422).json({
-        error: "Naver Blog visitor report must be a non-negative safe integer",
-      });
       return;
     }
     if (!influencerVerificationMethods.has(ownershipMethod)) {
@@ -32385,14 +33920,6 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       platformAccessTokenProvided: Boolean(platformAccessToken),
       automation: platformAutomationCheck,
     });
-    const selfReportedChannelMetric =
-      platform === "naver_blog" && naverBlogVisitorReport !== undefined
-        ? buildNaverBlogSelfReportedChannelMetric({
-            platformHandle,
-            value: naverBlogVisitorReport,
-            reportedAt: now,
-          })
-        : undefined;
     const ownershipCheck =
       platformAutomationCheck.ownership_check ??
       ({
@@ -32430,8 +33957,6 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       platform: platform as InfluencerPlatform,
       platform_handle: platformHandle,
       platform_url: platformUrl,
-      naver_blog_recent_4d_average_visitors:
-        selfReportedChannelMetric?.value,
       ownership_verification_method: ownershipMethod,
       ownership_challenge_code: isInstagramDmMethod
         ? undefined
@@ -32446,9 +33971,6 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       evidence_file_mime: evidenceFile?.type,
       evidence_file_size: evidenceFile?.size,
       evidence_snapshot_json: buildVerificationEvidenceSnapshot(requestId, storedEvidenceFile, {
-        ...(selfReportedChannelMetric
-          ? { self_reported_channel_metric: selfReportedChannelMetric }
-          : {}),
         ownership_verification: {
           contract_id: contractAccess.contractId,
           platform,
@@ -33025,6 +34547,8 @@ app.post("/api/contracts/:id/post-link", async (request, response, next) => {
 
 app.post("/api/contracts/:id/deliverables", async (request, response, next) => {
   try {
+    response.setHeader("Cache-Control", "private, no-store");
+    response.setHeader("Vary", "Cookie");
     const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "deliverable_submit",
@@ -33176,6 +34700,16 @@ app.post("/api/contracts/:id/deliverables", async (request, response, next) => {
       ),
       ignoreDuplicate: true,
     });
+    const instagramMetricsEnrichment =
+      url && normalizeInstagramReelUrl(url)
+        ? refreshDeliverableInstagramReelMetrics({
+            deliverable,
+            profileId: influencerAuth.profile.id,
+          }).catch(() => undefined)
+        : undefined;
+    if (instagramMetricsEnrichment) {
+      waitUntil(instagramMetricsEnrichment);
+    }
     await updateContractDeliverableWorkflow(contract.id, request);
 
     const updatedBundle = await readContractDeliverableBundle(contract);
@@ -33188,8 +34722,76 @@ app.post("/api/contracts/:id/deliverables", async (request, response, next) => {
   }
 });
 
+app.post(
+  "/api/contracts/:id/deliverables/:deliverableId/instagram-metrics/refresh",
+  async (request, response, next) => {
+    try {
+      response.setHeader("Cache-Control", "private, no-store");
+      response.setHeader("Vary", "Cookie");
+      const throttle = await consumeSensitiveEndpointRateLimit(
+        request,
+        "deliverable_instagram_metrics",
+        request.params.deliverableId,
+      );
+      if (throttle.blocked) {
+        sendSensitiveRateLimitResponse(response, throttle);
+        return;
+      }
+      if (!useSupabase) {
+        response.status(503).json({
+          error: "인스타그램 성과 확인에는 운영 데이터 연결이 필요합니다.",
+        });
+        return;
+      }
+      const advertiserAuth = await requireAdvertiserSession(request, response);
+      if (!advertiserAuth) return;
+      const { existingContract: contract } = await readContractWriteContext(
+        request.params.id,
+      );
+      if (!contract) {
+        response.status(404).json({ error: "Contract not found" });
+        return;
+      }
+      if (!canAdvertiserAccessLegacyContract(advertiserAuth, contract)) {
+        response.status(403).json({ error: "이 계약을 볼 권한이 없습니다." });
+        return;
+      }
+      const bundle = await readContractDeliverableBundle(contract);
+      const deliverable = bundle.deliverables.find(
+        (candidate) => candidate.id === request.params.deliverableId,
+      );
+      if (!deliverable) {
+        response.status(404).json({ error: "Deliverable not found" });
+        return;
+      }
+      if (
+        !deliverable.creator_profile_id ||
+        !normalizeInstagramReelUrl(deliverable.url)
+      ) {
+        response.status(422).json({
+          error: "인스타그램 릴스 링크만 성과를 확인할 수 있습니다.",
+        });
+        return;
+      }
+      const metrics = await refreshDeliverableInstagramReelMetrics({
+        deliverable,
+        profileId: deliverable.creator_profile_id,
+      });
+      const updatedBundle = await readContractDeliverableBundle(contract);
+      response.json({
+        instagram_reel_metrics: metrics,
+        ...buildDeliverableResponse(contract, updatedBundle),
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 app.patch("/api/contracts/:id/deliverables/:deliverableId", async (request, response, next) => {
   try {
+    response.setHeader("Cache-Control", "private, no-store");
+    response.setHeader("Vary", "Cookie");
     const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "deliverable_review",

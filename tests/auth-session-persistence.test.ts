@@ -500,7 +500,7 @@ describe("server auth refresh integration", { concurrency: false }, () => {
           });
 
         if (fakeSupabaseState.mode === "timeout") {
-          setTimeout(reply, Math.max(fakeSupabaseState.delayMs, 500));
+          setTimeout(reply, Math.max(fakeSupabaseState.delayMs, 1_000));
           return;
         }
         if (fakeSupabaseState.delayMs > 0) {
@@ -521,7 +521,7 @@ describe("server auth refresh integration", { concurrency: false }, () => {
             if (!response.destroyed) {
               sendJson(response, 401, { message: "expired access token" });
             }
-          }, Math.max(fakeSupabaseState.delayMs, 500));
+          }, Math.max(fakeSupabaseState.delayMs, 1_000));
           return;
         }
         sendJson(response, 401, { message: "expired access token" });
@@ -708,7 +708,7 @@ describe("server auth refresh integration", { concurrency: false }, () => {
       SUPABASE_URL: `http://127.0.0.1:${fakeAddress.port}`,
       SUPABASE_PUBLISHABLE_KEY: "session-test-publishable-key",
       SUPABASE_SERVICE_ROLE_KEY: "session-test-service-role-key",
-      SUPABASE_REQUEST_TIMEOUT_MS: "0.1",
+      SUPABASE_REQUEST_TIMEOUT_MS: "0.5",
       SUPABASE_PROFILE_CACHE_SECONDS: "0.001",
       DIRECTSIGN_DEMO_MODE: "true",
       DIRECTSIGN_ALLOW_PRODUCTION_DEMO_MODE: "true",

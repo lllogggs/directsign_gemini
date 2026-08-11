@@ -546,12 +546,15 @@ test("append-only evidence stays protected outside the bounded purge function", 
 test("privacy notice version and verified backup window are explicit", () => {
   const runbook = readSource("../docs/privacy-retention-runbook.md");
 
-  assert.match(server, /const signupPrivacyPolicyVersion = "2026-08-08\.3"/);
+  assert.match(server, /const signupPrivacyPolicyVersion = "2026-08-11\.2"/);
   assert.match(
     signupPage,
-    /const PRIVACY_POLICY_DOCUMENT_VERSION = "2026-08-08\.3"/,
+    /const PRIVACY_POLICY_DOCUMENT_VERSION = "2026-08-11\.2"/,
   );
-  assert.match(privacyPage, /documentVersion: "2026-08-08\.3"/);
+  assert.match(privacyPage, /documentVersion: "2026-08-11\.2"/);
+  assert.match(runbook, /네이버 블로그 캠페인 지원 조건 확인값[\s\S]+30일/);
+  assert.match(runbook, /네이버 인플루언서 자동 확인·본인 확인 재사용 기록[\s\S]+1년/);
+  assert.match(privacyPage, /본인 확인 재사용 기록[\s\S]+최대 1년간/);
   assert.match(privacyPage, /데이터베이스 백업은 현재 운영 설정에서 최대 7일/);
   assert.match(privacyPage, /비공개 파일은 데이터베이스 백업에 포함되지 않으며/);
   assert.match(runbook, /최근 7개 일일 물리 백업/);

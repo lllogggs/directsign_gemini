@@ -97,6 +97,7 @@ Callback URL은 canonical origin인 apex `https://yeollock.me`를 사용한다. 
 | `META_APP_SECRET` | webhook HMAC 검증 | 서버 secret |
 | `META_GRAPH_API_VERSION` | Graph API 버전 | App에서 검증한 지원 버전 |
 | `META_INSTAGRAM_ACCESS_TOKEN` | DM sender profile 조회 | `@yeollockme` 연결에서 발급한 서버 token |
+| `META_GRAPH_ACCESS_TOKEN` | 캠페인 팔로워 갱신·릴스 공개 성과 | Business Discovery 권한이 있는 서버 token. 없으면 DM token 재사용 canary 통과가 필요 |
 | `META_INSTAGRAM_ACCESS_TOKEN_EXPIRES_AT` | token 만료 감시 | UTC ISO-8601 시각 |
 | `META_IG_USER_ID` | 공식 계정 recipient 식별 | 연결된 `@yeollockme` Instagram user ID |
 | `META_WEBHOOK_VERIFY_TOKEN` | webhook GET 검증 | 별도로 생성한 긴 secret |
@@ -108,6 +109,8 @@ Callback URL은 canonical origin인 apex `https://yeollock.me`를 사용한다. 
 
 `META_GRAPH_ACCESS_TOKEN`은 기존 Business Discovery 용도로 별도 사용될 수 있다. DM sender 조회의 기준 token은 `META_INSTAGRAM_ACCESS_TOKEN`이며 둘을 같은 값이라고 가정하지 않는다.
 
+캠페인 신청 화면의 `최신 수치 확인`과 제출한 릴스의 공개 성과 확인은 `META_GRAPH_ACCESS_TOKEN`을 우선 사용한다. 이 값이 없으면 기존 `META_INSTAGRAM_ACCESS_TOKEN`으로 Business Discovery를 시도하되, Meta가 해당 권한을 실제 허용한 경우에만 성공값을 사용한다. 조회 실패는 기존 DM 인증 팔로워 수를 덮어쓰거나 0으로 바꾸지 않는다. 릴스는 제출자의 승인 계정에 실제로 속한 정확한 링크만 확인하고 공개 좋아요·댓글만 저장하며, 조회수·도달·저장·공유 같은 계정 소유자 Insights는 별도 OAuth 동의 없이 수집하지 않는다.
+
 설정 후에는 새 deployment를 만들어야 한다. Vercel에 값을 저장했지만 이전 deployment가 계속 실행 중인 상태를 운영 완료로 보지 않는다.
 
 ## Supabase migration
@@ -117,6 +120,8 @@ Callback URL은 canonical origin인 apex `https://yeollock.me`를 사용한다. 
 1. `supabase/migrations/20260802090000_add_instagram_dm_challenge_automation.sql`
 2. `supabase/migrations/20260802091000_enforce_instagram_dm_challenge_lifecycle.sql`
 3. `supabase/migrations/20260802092000_add_atomic_instagram_dm_transitions.sql`
+4. `supabase/migrations/20260811120000_add_campaign_eligibility_rules.sql`
+5. `supabase/migrations/20260811130000_add_instagram_campaign_metrics.sql`
 
 적용 전에는 backup과 현재 schema version을 기록한다. 적용 후에는 다음을 확인한다.
 

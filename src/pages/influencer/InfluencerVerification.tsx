@@ -72,7 +72,6 @@ interface InfluencerVerificationForm {
   platform_handle: string;
   platform_url: string;
   ownership_challenge_url: string;
-  naver_blog_recent_4d_average_visitors: string;
   note: string;
 }
 
@@ -80,21 +79,7 @@ const initialForm: InfluencerVerificationForm = {
   platform_handle: "",
   platform_url: "",
   ownership_challenge_url: "",
-  naver_blog_recent_4d_average_visitors: "",
   note: "",
-};
-
-const parseNaverBlogVisitorAverageInput = (value: string) => {
-  const trimmed = value.trim();
-  if (!trimmed) return { value: undefined };
-  if (!/^(?:0|[1-9][0-9]*|[1-9][0-9]{0,2}(?:,[0-9]{3})+)$/.test(trimmed)) {
-    return { error: "0 이상의 정수로 입력해 주세요." };
-  }
-  const parsed = Number(trimmed.replace(/,/g, ""));
-  if (!Number.isSafeInteger(parsed) || parsed < 0) {
-    return { error: "입력 가능한 숫자 범위를 확인해 주세요." };
-  }
-  return { value: parsed };
 };
 
 const normalizeInstagramHandleInput = (value: string) => {
@@ -334,7 +319,6 @@ export function InfluencerVerification() {
   const [file, setFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [naverBlogVisitorError, setNaverBlogVisitorError] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [instagramDmChallenge, setInstagramDmChallenge] =
     useState<InstagramDmChallenge | null>(null);
@@ -523,10 +507,6 @@ export function InfluencerVerification() {
         platform_url: current.platform_url || contract.influencer_info.channel_url,
         ownership_challenge_url:
           current.ownership_challenge_url || contract.influencer_info.channel_url,
-        naver_blog_recent_4d_average_visitors:
-          (inferredPlatform ?? platform) === "naver_blog"
-            ? current.naver_blog_recent_4d_average_visitors
-            : "",
       }));
       setPrefilledContractId(contract.id);
     }, 0);
@@ -564,7 +544,6 @@ export function InfluencerVerification() {
   const updateForm = (updates: Partial<InfluencerVerificationForm>) => {
     setForm((current) => ({ ...current, ...updates }));
     setError("");
-    setNaverBlogVisitorError("");
     setSubmitted(false);
   };
 
@@ -577,11 +556,9 @@ export function InfluencerVerification() {
       platform_handle: "",
       platform_url: "",
       ownership_challenge_url: "",
-      naver_blog_recent_4d_average_visitors: "",
     }));
     setFile(null);
     setError("");
-    setNaverBlogVisitorError("");
     setSubmitted(false);
   };
 
@@ -621,25 +598,6 @@ export function InfluencerVerification() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError("");
-    setNaverBlogVisitorError("");
-
-    const parsedNaverBlogVisitorAverage =
-      platform === "naver_blog"
-        ? parseNaverBlogVisitorAverageInput(
-            form.naver_blog_recent_4d_average_visitors,
-          )
-        : { value: undefined };
-    if (parsedNaverBlogVisitorAverage.error) {
-      setNaverBlogVisitorError(parsedNaverBlogVisitorAverage.error);
-      return;
-    }
-    if (
-      platform === "naver_blog" &&
-      parsedNaverBlogVisitorAverage.value === undefined
-    ) {
-      setNaverBlogVisitorError("최근 4일 평균 일일 방문자 수를 입력해 주세요.");
-      return;
-    }
 
     const instagramUsername = isInstagramDmMethod
       ? normalizeInstagramHandleInput(form.platform_handle)
@@ -687,13 +645,6 @@ export function InfluencerVerification() {
         body: JSON.stringify({
           platform_handle: submittedForm.platform_handle,
           platform_url: submittedForm.platform_url,
-          ...(platform === "naver_blog" &&
-          parsedNaverBlogVisitorAverage.value !== undefined
-            ? {
-                naver_blog_recent_4d_average_visitors:
-                  parsedNaverBlogVisitorAverage.value,
-              }
-            : {}),
           ...(contractId ? { contract_id: contractId } : {}),
           platform,
           target_id: buildTargetId(platform, submittedForm),
@@ -1239,22 +1190,6 @@ export function InfluencerVerification() {
                   placeholder={selectedPlatform.urlPlaceholder}
                   required
                 />
-                {platform === "naver_blog" ? (
-                  <TextField
-                    label="최근 4일 평균 일일 방문자 수"
-                    value={form.naver_blog_recent_4d_average_visitors}
-                    onChange={(value) =>
-                      updateForm({
-                        naver_blog_recent_4d_average_visitors: value,
-                      })
-                    }
-                    placeholder="예: 1,250"
-                    inputMode="numeric"
-                    helper="오늘을 제외한 최근 4일 평균을 입력해 주세요. 탐색에는 자가신고로 표시됩니다."
-                    error={naverBlogVisitorError}
-                    required
-                  />
-                ) : null}
               </div>
             )}
 
