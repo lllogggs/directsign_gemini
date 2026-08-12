@@ -1,4 +1,4 @@
-name: Use current production guide screenshots
+name: Refresh advertiser guide with current production screens
 
 on:
   push:
@@ -10,41 +10,52 @@ permissions:
   contents: write
 
 jobs:
-  update-guide:
+  capture-and-publish:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Point guide to production captures
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Capture current production UI
+        env:
+          SALES_CAPTURE_BASE_URL: https://yeollock.me
+        run: node scripts/capture-current-guide-screens.mjs
+      - name: Point guide to fresh captures and remove old assets
         run: |
           node <<'NODE'
           const fs = require('fs');
           const p = 'public/guide/advertiser/index.html';
           let html = fs.readFileSync(p, 'utf8');
-
-          const discovery = /<div class="discovery-shot">[\s\S]*?<\/div><\/section>\s*<section class="screen-section"><div class="screen-head"><div><div class="step">02 · RECRUIT<\/div>/;
-          if (!discovery.test(html)) throw new Error('Discovery guide block not found');
-          html = html.replace(
-            discovery,
-            '<div class="shot"><img src="/guide/assets/yeollock-influencer-discovery-main.png" alt="현재 연락미 인플루언서 탐색 화면" loading="lazy" /></div></section>\n      <section class="screen-section"><div class="screen-head"><div><div class="step">02 · RECRUIT</div>'
-          );
-
-          html = html.replace(
-            '/guide/assets/yeollock-campaign-applicants-current.svg',
-            '/guide/assets/yeollock-campaign-applicants-dashboard.png'
-          );
+          const replacements = [
+            ['/guide/assets/yeollock-influencer-discovery-main.png', '/guide/assets/yeollock-influencer-discovery-current-v2.png'],
+            ['/guide/assets/yeollock-campaign-builder-main.png', '/guide/assets/yeollock-campaign-builder-current-v2.png'],
+            ['/guide/assets/yeollock-campaign-applicants-dashboard.png', '/guide/assets/yeollock-campaign-manage-current-v2.png'],
+            ['/guide/assets/yeollock-campaign-applicants-current.svg', '/guide/assets/yeollock-campaign-manage-current-v2.png'],
+          ];
+          for (const [from, to] of replacements) html = html.replaceAll(from, to);
+          if (!html.includes('/guide/assets/yeollock-influencer-discovery-current-v2.png')) throw new Error('fresh discovery capture was not wired into guide');
+          if (!html.includes('/guide/assets/yeollock-campaign-builder-current-v2.png')) throw new Error('fresh campaign builder capture was not wired into guide');
+          if (!html.includes('/guide/assets/yeollock-campaign-manage-current-v2.png')) throw new Error('fresh campaign management capture was not wired into guide');
           fs.writeFileSync(p, html);
           NODE
-      - name: Commit guide screenshot update
+
+          rm -f \
+            public/guide/assets/yeollock-influencer-discovery-main.png \
+            public/guide/assets/yeollock-campaign-builder-main.png \
+            public/guide/assets/yeollock-campaign-applicants-dashboard.png \
+            public/guide/assets/yeollock-campaign-applicants-current.svg
+      - name: Commit fresh current-version guide screens
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/guide/advertiser/index.html
+          git add -A public/guide/advertiser/index.html public/guide/assets
           if git diff --cached --quiet; then
-            echo "No changes"
+            echo "No guide screenshot changes"
             exit 0
           fi
-          git commit -m "Use live production screenshots in advertiser guide"
+          git commit -m "Replace guide screenshots with current production UI"
           git push
