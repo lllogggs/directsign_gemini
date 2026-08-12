@@ -24,23 +24,36 @@ async function login(page) {
     throw new Error(`advertiser login failed (${result.status})`);
   }
 
-  const accountId = await page.evaluate(async () => {
-    const response = await fetch("/api/advertiser/session", {
+  const session = await page.evaluate(async () => {
+    const response = await fetch("/api/advertiser/session", { headers: { Accept: "application/json" }, credentials: "include" });
+    return { status: response.status, body: await response.json().catch(() => ({})) };
+  });
+  const accountId = session.body?.user?.id || session.body?.account?.id || null;
+  if (accountId) {
+    await page.evaluate((id) => {
+      localStorage.setItem(`yeollock:product-tour:advertiser:${encodeURIComponent(id)}:influencer-discovery:v1`, "seen");
+    }, accountId);
+  }
+}
+
+async function inspectInfluencerApi(page) {
+  return page.evaluate(async () => {
+    const response = await fetch("/api/marketplace/influencers?page=1&sort=audience_desc", {
       headers: { Accept: "application/json" },
       credentials: "include",
     });
     const body = await response.json().catch(() => ({}));
-    return body?.user?.id || body?.account?.id || null;
+    return {
+      ok: response.ok,
+      status: response.status,
+      total: body?.total,
+      page: body?.page,
+      pageSize: body?.pageSize,
+      totalPages: body?.totalPages,
+      profiles: Array.isArray(body?.profiles) ? body.profiles.length : null,
+      error: body?.error || body?.message || null,
+    };
   });
-
-  if (accountId) {
-    await page.evaluate((id) => {
-      localStorage.setItem(
-        `yeollock:product-tour:advertiser:${encodeURIComponent(id)}:influencer-discovery:v1`,
-        "seen",
-      );
-    }, accountId);
-  }
 }
 
 async function findCampaignWithApplicants(page) {
@@ -58,9 +71,7 @@ async function findCampaignWithApplicants(page) {
       if (!thread?.campaignId) continue;
       counts.set(thread.campaignId, (counts.get(thread.campaignId) || 0) + 1);
     }
-    const sorted = campaigns
-      .filter((campaign) => counts.has(campaign.id))
-      .sort((a, b) => (counts.get(b.id) || 0) - (counts.get(a.id) || 0));
+    const sorted = campaigns.filter((campaign) => counts.has(campaign.id)).sort((a, b) => (counts.get(b.id) || 0) - (counts.get(a.id) || 0));
     return sorted[0]?.id || threads.find((thread) => thread?.campaignId)?.campaignId || null;
   });
 }
@@ -73,6 +84,12 @@ try {
   page.setDefaultTimeout(60000);
   page.setDefaultNavigationTimeout(60000);
   await login(page);
+
+  const influencerApi = await inspectInfluencerApi(page);
+  console.log("influencerApi", JSON.stringify(influencerApi));
+  if (!influencerApi.ok || !influencerApi.profiles) {
+    throw new Error(`influencer API unavailable for capture: ${JSON.stringify(influencerApi)}`);
+  }
 
   await page.goto(`${baseUrl}/advertiser/discover`, { waitUntil: "domcontentloaded", timeout: 60000 });
   await page.locator('[data-product-tour="advertiser-discovery-overview"]').waitFor({ state: "visible" });
@@ -87,10 +104,7 @@ try {
   await wait(1200);
   await page.screenshot({ path: path.join(outDir, "yeollock-campaign-applicants-dashboard.png"), fullPage: false });
 
-  console.log(JSON.stringify({ ok: true, campaignId, outputs: [
-    "public/guide/assets/yeollock-influencer-discovery-main.png",
-    "public/guide/assets/yeollock-campaign-applicants-dashboard.png"
-  ] }, null, 2));
+  console.log(JSON.stringify({ ok: true, campaignId, outputs: ["public/guide/assets/yeollock-influencer-discovery-main.png", "public/guide/assets/yeollock-campaign-applicants-dashboard.png"] }, null, 2));
 } finally {
   await browser.close();
 }
