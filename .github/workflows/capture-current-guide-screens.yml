@@ -1,10 +1,9 @@
-name: Capture current guide screens
+name: Align current guide visuals
 
 on:
   push:
     branches: [main]
     paths:
-      - "scripts/capture-current-guide-screens.mjs"
       - ".github/workflows/capture-current-guide-screens.yml"
       - "docs/capture-current-guide.trigger"
 
@@ -12,28 +11,50 @@ permissions:
   contents: write
 
 jobs:
-  capture:
+  align:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npx playwright install --with-deps chromium
-      - name: Capture production screens
-        env:
-          SALES_CAPTURE_BASE_URL: https://yeollock.me
-        run: node scripts/capture-current-guide-screens.mjs
-      - name: Commit refreshed captures
+      - name: Patch guide to current service visuals
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const guidePath = 'public/guide/advertiser/index.html';
+          let html = fs.readFileSync(guidePath, 'utf8');
+
+          html = html.replace(
+            '.platform-dot{width:7px;height:7px;border-radius:50%;background:#22c55e}',
+            `.platform-dot{display:inline-flex;width:18px;height:18px;flex:none;align-items:center;justify-content:center;border-radius:4px;overflow:hidden}.platform-dot.naver{background:#03C75A}.platform-dot.naver:before{content:"N";color:#fff;font-size:11px;font-weight:900;line-height:1}.platform-dot.instagram{background:radial-gradient(circle at 30% 110%,#fdf497 0%,#fdf497 16%,#fd5949 42%,#d6249f 68%,#285aeb 100%);position:relative}.platform-dot.instagram:before{content:"";width:10px;height:10px;border:1.5px solid #fff;border-radius:3px}.platform-dot.youtube{background:#FF0033;position:relative}.platform-dot.youtube:before{content:"";width:0;height:0;border-top:4px solid transparent;border-bottom:4px solid transparent;border-left:7px solid #fff;margin-left:1px}`
+          );
+          html = html.replaceAll('<i class="platform-dot"></i>네이버 블로그','<i class="platform-dot naver"></i>네이버 블로그');
+          html = html.replaceAll('<i class="platform-dot"></i>인스타그램','<i class="platform-dot instagram"></i>인스타그램');
+          html = html.replaceAll('<i class="platform-dot"></i>유튜브','<i class="platform-dot youtube"></i>유튜브');
+          fs.writeFileSync(guidePath, html);
+
+          const applicantPath = 'public/guide/assets/yeollock-campaign-applicants-current.svg';
+          if (fs.existsSync(applicantPath)) {
+            let svg = fs.readFileSync(applicantPath, 'utf8');
+            svg = svg.replace(
+              '.platform-dot{width:7px;height:7px;border-radius:50%;background:#39a86b}',
+              `.platform-dot{display:inline-flex;width:16px;height:16px;flex:none;align-items:center;justify-content:center;border-radius:4px;overflow:hidden}.platform-dot.instagram{background:radial-gradient(circle at 30% 110%,#fdf497 0%,#fdf497 16%,#fd5949 42%,#d6249f 68%,#285aeb 100%);position:relative}.platform-dot.instagram:before{content:"";width:9px;height:9px;border:1.3px solid #fff;border-radius:3px}.platform-dot.naver{background:#03C75A}.platform-dot.naver:before{content:"N";color:#fff;font-size:9px;font-weight:900}`
+            );
+            svg = svg.replaceAll('<i class="platform-dot"></i>Instagram','<i class="platform-dot instagram"></i>Instagram');
+            svg = svg.replaceAll('<i class="platform-dot"></i>Naver Blog','<i class="platform-dot naver"></i>Naver Blog');
+            svg = svg.replaceAll('<span class="tag">Instagram</span>','<span class="tag"><i class="platform-dot instagram"></i>Instagram</span>');
+            fs.writeFileSync(applicantPath, svg);
+          }
+          NODE
+      - name: Commit current-service visual alignment
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/guide/assets/yeollock-influencer-discovery-main.png public/guide/assets/yeollock-campaign-applicants-dashboard.png
+          git add public/guide/advertiser/index.html public/guide/assets/yeollock-campaign-applicants-current.svg
           if git diff --cached --quiet; then
-            echo "No capture changes"
+            echo "No changes"
             exit 0
           fi
-          git commit -m "Refresh guide screenshots from production"
+          git commit -m "Match guide platform marks to current service"
           git push
