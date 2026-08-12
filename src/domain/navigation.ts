@@ -25,7 +25,17 @@ export function getNextPath(
   allowedPrefixes: readonly string[],
 ) {
   const params = new URLSearchParams(search);
-  return getSafeRedirectPath(params.get("next"), fallback, allowedPrefixes);
+  const onboardingFallback =
+    fallback === "/advertiser/verification" &&
+    allowedPrefixes.includes("/advertiser")
+      ? "/advertiser/dashboard"
+      : fallback;
+
+  return getSafeRedirectPath(
+    params.get("next"),
+    onboardingFallback,
+    allowedPrefixes,
+  );
 }
 
 export function buildLoginRedirect(
