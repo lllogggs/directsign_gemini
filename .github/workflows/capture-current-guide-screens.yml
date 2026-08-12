@@ -1,0 +1,39 @@
+name: Capture current guide screens
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/capture-current-guide-screens.mjs"
+      - ".github/workflows/capture-current-guide-screens.yml"
+      - "docs/capture-current-guide.trigger"
+
+permissions:
+  contents: write
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Capture production screens
+        env:
+          SALES_CAPTURE_BASE_URL: https://yeollock.me
+        run: node scripts/capture-current-guide-screens.mjs
+      - name: Commit refreshed captures
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/guide/assets/yeollock-influencer-discovery-main.png public/guide/assets/yeollock-campaign-applicants-dashboard.png
+          if git diff --cached --quiet; then
+            echo "No capture changes"
+            exit 0
+          fi
+          git commit -m "Refresh guide screenshots from production"
+          git push
