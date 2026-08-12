@@ -53,6 +53,9 @@ const clarityPublicPaths = new Set([
   "/legal/e-sign-consent",
 ]);
 
+const publicCampaignPathPattern =
+  /^\/campaigns\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const googleAnalyticsScriptId = "yeollock-google-analytics";
 const clarityScriptId = "yeollock-microsoft-clarity";
 const analyticsCookieMaxAgeSeconds = 60 * 60 * 24 * 90;
@@ -115,9 +118,14 @@ const isClarityAllowedLocation = (
   pathname: string,
   search = "",
   hash = "",
-) =>
-  !hasUntrustedUrlContext(search, hash) &&
-  clarityPublicPaths.has(normalizeStaticPath(pathname));
+) => {
+  if (hasUntrustedUrlContext(search, hash)) return false;
+  const normalizedPath = normalizeStaticPath(pathname);
+  return (
+    clarityPublicPaths.has(normalizedPath) ||
+    publicCampaignPathPattern.test(normalizedPath)
+  );
+};
 
 export const getAnalyticsPagePath = (
   pathname: string,
@@ -134,9 +142,10 @@ export const getAnalyticsPagePath = (
 export const isGoogleAnalyticsCollectionEnabled = () =>
   readPublicEnv("VITE_GA_HISTORY_MEASUREMENT_VERIFIED") === "true";
 
-// Microsoft prohibits Clarity on services targeting people under 18. 연락미
-// does not currently enforce an 18+ audience, so collection stays fail-closed.
-export const isMicrosoftClarityCollectionEnabled = () => false;
+// Clarity is enabled for this general-audience professional service and remains
+// behind explicit analytics consent. Microsoft says Clarity shouldn't be used
+// on websites/apps targeting users under 18; 연락미 does not target that audience.
+export const isMicrosoftClarityCollectionEnabled = () => true;
 
 const appendScript = (id: string, src: string) => {
   if (document.getElementById(id)) return;
@@ -468,18 +477,24 @@ export const installAnalytics = (
   hash = window.location.hash,
 ) => {
   const pageKey = getAnalyticsPagePath(pathname, search, hash);
+  const clarityAllowed =
+    isMicrosoftClarityCollectionEnabled() &&
+    isClarityAllowedLocation(pathname, search, hash);
+
   if (
     !isAnalyticsRuntimeEnabled() ||
     getAnalyticsConsent() !== "granted" ||
-    !pageKey
+    (!pageKey && !clarityAllowed)
   ) {
     return;
   }
 
   patchHistoryForExternalAnalytics();
   prepareExternalAnalyticsForLocation(pathname, search, hash);
-  if (isGoogleAnalyticsCollectionEnabled()) installGoogleAnalytics(pageKey);
-  if (isMicrosoftClarityCollectionEnabled()) {
+  if (pageKey && isGoogleAnalyticsCollectionEnabled()) {
+    installGoogleAnalytics(pageKey);
+  }
+  if (clarityAllowed) {
     installClarity(pathname, search, hash);
   }
 };
@@ -492,7 +507,20 @@ export const syncAnalyticsRoute = (
   if (!isAnalyticsRuntimeEnabled()) return;
 
   const pageKey = getAnalyticsPagePath(pathname, search, hash);
-  if (getAnalyticsConsent() !== "granted" || !pageKey) {
+  const clarityAllowed =
+    isMicrosoftClarityCollectionEnabled() &&
+    isClarityAllowedLocation(pathname, search, hash);
+
+  if (getAnalyticsConsent() !== "granted") {
+    setGoogleAnalyticsDisabled(true);
+    if (clarityScriptInstalled || analyticsWindow().clarity) {
+      prepareClarityForLocation(pathname, search, hash);
+    }
+    lastTrackedPageKey = undefined;
+    return;
+  }
+
+  if (!pageKey && !clarityAllowed) {
     setGoogleAnalyticsDisabled(true);
     if (clarityScriptInstalled || analyticsWindow().clarity) {
       prepareClarityForLocation(pathname, search, hash);
@@ -503,11 +531,11 @@ export const syncAnalyticsRoute = (
 
   installAnalytics(pathname, search, hash);
   prepareExternalAnalyticsForLocation(pathname, search, hash);
-  if (isMicrosoftClarityCollectionEnabled()) {
+  if (clarityAllowed) {
     installClarity(pathname, search, hash);
   }
 
-  if (!isGoogleAnalyticsCollectionEnabled()) {
+  if (!pageKey || !isGoogleAnalyticsCollectionEnabled()) {
     setGoogleAnalyticsDisabled(true);
     lastTrackedPageKey = undefined;
     return;
