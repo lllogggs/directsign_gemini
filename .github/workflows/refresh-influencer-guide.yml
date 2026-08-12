@@ -1,0 +1,67 @@
+name: Publish influencer one-minute guide
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/refresh-influencer-guide.yml"
+      - "scripts/capture-current-influencer-guide.mjs"
+      - "public/guide/influencer/index.html"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Capture current influencer screens
+        env:
+          SALES_CAPTURE_BASE_URL: https://yeollock.me
+        run: node scripts/capture-current-influencer-guide.mjs
+      - name: Wire homepage intro picker and sitemap
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+
+          const landingPath = 'src/pages/landing/LandingPages.tsx';
+          let landing = fs.readFileSync(landingPath, 'utf8');
+          landing = landing.replace('introHref: "/intro/advertiser",', 'introHref: "/guide/advertiser",');
+          landing = landing.replace('introHref: "/intro/influencer",', 'introHref: "/guide/influencer",');
+          if (!landing.includes('introHref: "/guide/advertiser",') || !landing.includes('introHref: "/guide/influencer",')) {
+            throw new Error('homepage intro guide links were not updated');
+          }
+          fs.writeFileSync(landingPath, landing);
+
+          const sitemapPath = 'public/sitemap.xml';
+          let sitemap = fs.readFileSync(sitemapPath, 'utf8');
+          const entries = [
+            '  <url>\n    <loc>https://yeollock.me/guide/advertiser</loc>\n    <lastmod>2026-08-12</lastmod>\n  </url>',
+            '  <url>\n    <loc>https://yeollock.me/guide/influencer</loc>\n    <lastmod>2026-08-12</lastmod>\n  </url>'
+          ];
+          for (const entry of entries) {
+            const loc = entry.match(/<loc>(.*?)<\/loc>/)?.[1];
+            if (loc && !sitemap.includes(`<loc>${loc}</loc>`)) {
+              sitemap = sitemap.replace('</urlset>', `${entry}\n</urlset>`);
+            }
+          }
+          fs.writeFileSync(sitemapPath, sitemap);
+          NODE
+      - name: Commit guide, screenshots, and homepage routing
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pages/landing/LandingPages.tsx public/sitemap.xml public/guide/influencer
+          if git diff --cached --quiet; then
+            echo "No influencer guide changes"
+            exit 0
+          fi
+          git commit -m "Wire role intro picker to one-minute guides"
+          git push
