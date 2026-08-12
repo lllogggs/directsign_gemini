@@ -201,7 +201,7 @@ const roleCards: RoleCard[] = [
     eyebrow: "계약 링크를 보내고 상태를 확인하는 팀",
     description: "계약별 검토 링크, 수정 요청, 서명, 제출 상태를 봅니다.",
     href: "/login/advertiser",
-    introHref: "/intro/advertiser",
+    introHref: "/guide/advertiser",
   },
   {
     role: "influencer",
@@ -210,7 +210,7 @@ const roleCards: RoleCard[] = [
     description:
       `${PRODUCT_NAME} 계약 링크에서 조건을 확인하고 수정 요청과 서명을 진행합니다.`,
     href: "/login/influencer",
-    introHref: "/intro/influencer",
+    introHref: "/guide/influencer",
   },
 ];
 
