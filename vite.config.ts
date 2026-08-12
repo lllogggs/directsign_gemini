@@ -1,5 +1,6 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import fs from 'fs';
 import path from 'path';
 import {fileURLToPath} from 'url';
 import {defineConfig, loadEnv} from 'vite';
@@ -10,6 +11,29 @@ const productNameHtmlPlugin = (productName: string) => ({
   name: 'product-name-html',
   transformIndexHtml(html: string) {
     return html.replaceAll('%PRODUCT_NAME%', productName);
+  },
+});
+
+const advertiserGuideAssetsPlugin = () => ({
+  name: 'advertiser-guide-assets',
+  closeBundle() {
+    const sourceDir = path.resolve(configDir, 'docs/sales/assets');
+    const outputDir = path.resolve(configDir, 'dist/guide/assets');
+    const assetNames = [
+      'yeollock-advertiser-dashboard.png',
+      'yeollock-influencer-discovery-main.png',
+      'yeollock-campaign-builder-main.png',
+      'yeollock-campaign-applicants-dashboard.png',
+      'yeollock-advertiser-campaign-dashboard.png',
+    ];
+
+    fs.mkdirSync(outputDir, {recursive: true});
+    for (const assetName of assetNames) {
+      fs.copyFileSync(
+        path.join(sourceDir, assetName),
+        path.join(outputDir, assetName),
+      );
+    }
   },
 });
 
@@ -36,7 +60,12 @@ export default defineConfig(({mode}) => {
   );
 
   return {
-    plugins: [productNameHtmlPlugin(productName), react(), tailwindcss()],
+    plugins: [
+      productNameHtmlPlugin(productName),
+      react(),
+      tailwindcss(),
+      advertiserGuideAssetsPlugin(),
+    ],
     define: {
       'import.meta.env.VITE_PRODUCT_NAME': JSON.stringify(productName),
     },
