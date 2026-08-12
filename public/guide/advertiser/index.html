@@ -46,6 +46,32 @@
     .screen-head h2{margin:8px 0 0;font-size:clamp(27px,3.5vw,42px);line-height:1.18;letter-spacing:-.025em;font-weight:900}
     .screen-note{margin:0 0 4px;color:var(--muted);font-size:13px;font-weight:700;text-align:right}
     .shot{overflow:hidden;border:1px solid rgba(17,19,24,.1);border-radius:16px;background:#f4f5f7;box-shadow:0 20px 56px rgba(15,23,42,.09)}
+
+    .discovery-shot{overflow:hidden;border:1px solid #d9e0d9;border-radius:16px;background:#f7f6f3;box-shadow:0 20px 56px rgba(15,23,42,.09)}
+    .discovery-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:17px 18px;border-bottom:1px solid #dde2dd;background:#fff}
+    .discovery-title{font-size:17px;font-weight:900;color:#171b17;white-space:nowrap}
+    .discovery-tools{display:flex;align-items:center;justify-content:flex-end;gap:7px;min-width:0}
+    .search-box,.tool-pill{display:inline-flex;height:34px;align-items:center;border:1px solid #dce1dc;border-radius:7px;background:#fff;color:#4c544c;font-size:11px;font-weight:800;white-space:nowrap}
+    .search-box{min-width:200px;padding:0 11px;color:#7b837b;text-align:left}
+    .tool-pill{padding:0 10px}
+    .discovery-scroll{overflow:auto;padding:14px;background:#f7f6f3}
+    .discovery-table{min-width:1000px;overflow:hidden;border:1px solid #d9e0d9;border-radius:8px;background:#fff}
+    .discovery-grid{display:grid;grid-template-columns:44px 78px 120px minmax(150px,.6fr) minmax(240px,.8fr) minmax(140px,.5fr) 110px;align-items:center;gap:10px;padding:0 12px}
+    .discovery-grid.head{min-height:44px;border-bottom:1px solid #d7ddd7;background:#f7f8f4;color:#303630;font-size:11px;font-weight:900}
+    .discovery-row{min-height:66px;border-bottom:1px solid #edf0ed;color:#303630;font-size:12px;font-weight:800}
+    .discovery-row:last-child{border-bottom:0}
+    .star{text-align:center;color:#b0b7b0;font-size:18px}
+    .country{font-weight:900}
+    .platform{display:inline-flex;width:max-content;align-items:center;gap:6px}
+    .platform-dot{width:7px;height:7px;border-radius:50%;background:#22c55e}
+    .category-tag{display:inline-flex;width:max-content;padding:5px 8px;border-radius:999px;background:#f1f5f1;color:#465046;font-size:10px;font-weight:900}
+    .creator{display:flex;align-items:center;gap:9px;min-width:0}
+    .avatar{display:grid;width:34px;height:34px;flex:0 0 34px;place-items:center;border-radius:50%;background:#eef1ee;color:#566056;font-size:11px;font-weight:900}
+    .creator strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:900}
+    .creator span{display:block;margin-top:2px;color:#8a918a;font-size:10px;font-weight:700}
+    .metric{font-variant-numeric:tabular-nums;color:#343b34;font-size:11px;font-weight:900}
+    .action-btn{display:inline-flex;height:31px;align-items:center;justify-content:center;border-radius:7px;background:#1f6feb;color:#fff;font-size:10px;font-weight:900}
+
     .export-wrap{position:relative;overflow:hidden;border:1px solid rgba(17,19,24,.1);border-radius:16px;background:#111827;box-shadow:0 20px 56px rgba(15,23,42,.11)}
     .export-wrap>img{opacity:.45;filter:saturate(.8)}
     .export-overlay{position:absolute;inset:0;display:grid;place-items:center;padding:24px;background:rgba(17,24,39,.18)}
@@ -61,7 +87,7 @@
     .cta p{margin:14px 0 0;color:rgba(255,255,255,.66);font-size:14px;font-weight:700}
     .cta .btn{margin-top:24px;background:#fff;color:#111827;box-shadow:none}
     footer{padding:26px 0;background:#111827;color:rgba(255,255,255,.4);text-align:center;font-size:10px;font-weight:700}
-    @media(max-width:760px){.wrap{width:min(100% - 28px,1180px)}.topbar-inner{height:58px}.brand{font-size:16px}.btn{min-height:40px;padding:0 14px;font-size:12px}.hero{padding:62px 0 48px}.hero-sub{font-size:14px}.hero-screen{margin-top:34px;border-radius:11px}.flow{font-size:10px;padding-top:22px}.screens{padding-top:44px}.screen-section{padding:48px 0}.screen-head{display:block;margin-bottom:16px}.screen-note{margin-top:8px;text-align:left;font-size:11px}.shot,.export-wrap{border-radius:10px}.export-dialog{padding:13px}.export-option{padding:9px}.cta{padding:64px 0}}
+    @media(max-width:760px){.wrap{width:min(100% - 28px,1180px)}.topbar-inner{height:58px}.brand{font-size:16px}.btn{min-height:40px;padding:0 14px;font-size:12px}.hero{padding:62px 0 48px}.hero-sub{font-size:14px}.hero-screen{margin-top:34px;border-radius:11px}.flow{font-size:10px;padding-top:22px}.screens{padding-top:44px}.screen-section{padding:48px 0}.screen-head{display:block;margin-bottom:16px}.screen-note{margin-top:8px;text-align:left;font-size:11px}.shot,.export-wrap,.discovery-shot{border-radius:10px}.discovery-toolbar{padding:12px;align-items:flex-start}.discovery-title{font-size:14px}.discovery-tools{overflow:auto;justify-content:flex-start}.search-box{min-width:160px}.discovery-scroll{padding:9px}.export-dialog{padding:13px}.export-option{padding:9px}.cta{padding:64px 0}}
   </style>
 </head>
 <body>
@@ -69,7 +95,7 @@
   <main>
     <section class="hero"><div class="wrap"><div class="hero-copy"><div class="eyebrow">광고주 1분 가이드</div><h1>찾고, 제안하고,<br />모집하고, 관리하세요.</h1><p class="hero-sub">인플루언서 찾기부터 캠페인 운영·성과관리까지 연락미 한곳에서.</p><div class="hero-actions"><a class="btn" href="/signup/advertiser">무료로 캠페인 시작하기</a></div></div><div class="hero-screen"><img src="/guide/assets/yeollock-advertiser-dashboard.png" alt="연락미 광고주 대시보드" fetchpriority="high" /></div><div class="flow"><span>인플루언서 검색</span><i>→</i><span>직접 제안</span><i>→</i><span>공개 모집</span><i>→</i><span>선정</span><i>→</i><span>콘텐츠</span><i>→</i><span>성과관리</span></div></div></section>
     <section class="screens"><div class="wrap">
-      <section class="screen-section"><div class="screen-head"><div><div class="step">01 · FIND</div><h2>적합한 인플루언서를<br />직접 찾고 제안</h2></div><p class="screen-note">DB에서 검색 → 원하는 사람에게 바로 제안</p></div><div class="shot"><img src="/guide/assets/yeollock-influencer-discovery-main.png" alt="인플루언서 검색 화면" loading="lazy" /></div></section>
+      <section class="screen-section"><div class="screen-head"><div><div class="step">01 · FIND</div><h2>적합한 인플루언서를<br />직접 찾고 제안</h2></div><p class="screen-note">DB에서 검색 → 원하는 사람에게 바로 제안</p></div><div class="discovery-shot"><div class="discovery-toolbar"><div class="discovery-title">인플루언서 탐색</div><div class="discovery-tools"><span class="search-box">⌕ 이름·채널 검색</span><span class="tool-pill">관심</span><span class="tool-pill">필터</span><span class="tool-pill">구독자·팔로워 많은순</span></div></div><div class="discovery-scroll"><div class="discovery-table"><div class="discovery-grid head"><span style="text-align:center">관심</span><span>국가</span><span>플랫폼</span><span>카테고리</span><span>인플루언서</span><span>채널 지표</span><span style="text-align:right">액션</span></div><div class="discovery-grid discovery-row"><span class="star">☆</span><span class="country">대한민국</span><span class="platform"><i class="platform-dot"></i>네이버 블로그</span><span><i class="category-tag">라이프</i></span><span class="creator"><i class="avatar">MH</i><span><strong>민서홈</strong><span>리빙 · 일상</span></span></span><span class="metric">방문자 1,240</span><span class="action-btn">제안하기</span></div><div class="discovery-grid discovery-row"><span class="star">☆</span><span class="country">대한민국</span><span class="platform"><i class="platform-dot"></i>인스타그램</span><span><i class="category-tag">푸드</i></span><span class="creator"><i class="avatar">TT</i><span><strong>오늘의맛</strong><span>맛집 · 식품</span></span></span><span class="metric">팔로워 18.4K</span><span class="action-btn">제안하기</span></div><div class="discovery-grid discovery-row"><span class="star">☆</span><span class="country">대한민국</span><span class="platform"><i class="platform-dot"></i>유튜브</span><span><i class="category-tag">피트니스</i></span><span class="creator"><i class="avatar">HF</i><span><strong>하루핏</strong><span>운동 · 건강</span></span></span><span class="metric">구독자 32.1K</span><span class="action-btn">제안하기</span></div><div class="discovery-grid discovery-row"><span class="star">☆</span><span class="country">대한민국</span><span class="platform"><i class="platform-dot"></i>네이버 블로그</span><span><i class="category-tag">뷰티</i></span><span class="creator"><i class="avatar">LD</i><span><strong>루나데이</strong><span>뷰티 · 리뷰</span></span></span><span class="metric">방문자 860</span><span class="action-btn">제안하기</span></div></div></div></div></section>
       <section class="screen-section"><div class="screen-head"><div><div class="step">02 · RECRUIT</div><h2>캠페인을 등록하면<br />연락미에도 함께 노출</h2></div><p class="screen-note">직접 제안 + 공개 모집을 동시에</p></div><div class="shot"><img src="/guide/assets/yeollock-campaign-builder-main.png" alt="캠페인 등록 화면" loading="lazy" /></div></section>
       <section class="screen-section"><div class="screen-head"><div><div class="step">03 · MANAGE</div><h2>신청부터 선정·콘텐츠까지<br />한 캠페인 안에서</h2></div><p class="screen-note">폼 응답을 다시 옮겨 적지 않아도 됩니다</p></div><div class="shot"><img src="/guide/assets/yeollock-campaign-applicants-dashboard.png" alt="캠페인 신청자 관리 화면" loading="lazy" /></div></section>
       <section class="screen-section"><div class="screen-head"><div><div class="step">04 · EXPORT</div><h2>성과는 익숙한<br />스프레드시트로</h2></div><p class="screen-note">Excel · Google 스프레드시트</p></div><div class="export-wrap"><img src="/guide/assets/yeollock-advertiser-campaign-dashboard.png" alt="연락미 캠페인 대시보드" loading="lazy" /><div class="export-overlay"><div class="export-dialog"><h3>내보내기</h3><div class="export-option"><div class="export-icon">↓</div><div><strong>엑셀 파일</strong><span>.xlsx로 바로 다운로드</span></div></div><div class="export-option"><div class="export-icon google">▦</div><div><strong>Google 스프레드시트</strong><span>연결된 Google Drive에 새 시트 생성</span></div></div></div></div></div></section>
