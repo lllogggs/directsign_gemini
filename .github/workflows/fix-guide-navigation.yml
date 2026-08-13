@@ -1,0 +1,65 @@
+name: Fix homepage guide navigation
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-guide-navigation.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Force guide links to full document navigation
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = 'src/pages/landing/LandingPages.tsx';
+          let source = fs.readFileSync(path, 'utf8');
+          const start = source.indexOf('function StartIntroRolePicker');
+          const end = source.indexOf('export function RoleIntroPage', start);
+          if (start < 0 || end < 0) throw new Error('StartIntroRolePicker block not found');
+          let block = source.slice(start, end);
+          const needle = 'to={role.introHref}\n                className=';
+          if (!block.includes(needle) && !block.includes('to={role.introHref}\n                reloadDocument\n                className=')) {
+            throw new Error('Guide Link target not found in role picker');
+          }
+          if (!block.includes('reloadDocument')) {
+            block = block.replace(
+              needle,
+              'to={role.introHref}\n                reloadDocument\n                className=',
+            );
+          }
+          source = source.slice(0, start) + block + source.slice(end);
+          fs.writeFileSync(path, source);
+          NODE
+
+      - name: Add influencer guide rewrite
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = 'vercel.json';
+          let source = fs.readFileSync(path, 'utf8');
+          if (!source.includes('"source": "/guide/influencer"')) {
+            const advertiser = `    {\n      "source": "/guide/advertiser",\n      "destination": "/guide/advertiser/index.html"\n    },`;
+            const influencer = `${advertiser}\n    {\n      "source": "/guide/influencer",\n      "destination": "/guide/influencer/index.html"\n    },`;
+            if (!source.includes(advertiser)) throw new Error('Advertiser guide rewrite anchor not found');
+            source = source.replace(advertiser, influencer);
+            fs.writeFileSync(path, source);
+          }
+          NODE
+
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pages/landing/LandingPages.tsx vercel.json
+          if git diff --cached --quiet; then
+            echo "No navigation changes needed"
+            exit 0
+          fi
+          git commit -m "Fix homepage guide links"
+          git push
