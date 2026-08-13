@@ -308,6 +308,10 @@
       "destination": "/guide/advertiser/index.html"
     },
     {
+      "source": "/guide/influencer",
+      "destination": "/guide/influencer/index.html"
+    },
+    {
       "source": "/privacy",
       "destination": "/privacy/index.html"
     },

@@ -1841,6 +1841,7 @@ function StartIntroRolePicker({ onClose }: { onClose: () => void }) {
               <Link
                 key={role.role}
                 to={role.introHref}
+                reloadDocument
                 className="group grid min-h-[74px] grid-cols-[1fr_auto] items-center gap-3 rounded-[12px] border border-neutral-200 bg-white px-4 py-3 transition hover:border-neutral-300 hover:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-neutral-950"
               >
                 <span className="min-w-0">
