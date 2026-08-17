@@ -239,8 +239,11 @@ describe("one-to-one contract write idempotency", () => {
     assert.match(server, /upsertSupabaseV2ContractRow\(/);
     assert.match(server, /equivalentOneToOneRetry/);
     assert.match(server, /!isV2Only/);
-    assert.match(server, /observedIncompleteOneToOneContract/);
-    assert.match(server, /mergeOneToOneContractWriteSet\(/);
+    assert.match(
+      server,
+      /if \(isV2Only\) \{[\s\S]{0,240}CONTRACT_AUTHORITATIVE_RECORD_REQUIRED/,
+    );
+    assert.doesNotMatch(server, /observedIncompleteOneToOneContract/);
     assert.match(server, /hasCompleteOneToOneContractForDraftContext\(/);
   });
 });

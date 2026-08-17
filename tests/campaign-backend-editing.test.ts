@@ -669,7 +669,7 @@ test("server wires aggregate counts, structured edit errors, and best-effort cac
     server.indexOf("app.post(\n  \"/api/marketplace/campaigns/:campaignId/applications\""),
   );
   const freshResponseSource = server.slice(
-    server.indexOf("const isValidPublicMarketplaceFreshQuery"),
+    server.indexOf("const setFreshPublicMarketplaceHeaders"),
     server.indexOf("const warmPublicMarketplaceCache"),
   );
   const publicImageNormalizerSource = server.slice(
@@ -710,15 +710,12 @@ test("server wires aggregate counts, structured edit errors, and best-effort cac
     campaignListRouteSource,
     campaignDetailRouteSource,
   ]) {
-    assert.match(
+    assert.doesNotMatch(
       routeSource,
       /isValidPublicMarketplaceFreshQuery\(request\.query\.fresh\)/,
     );
-    assert.match(
-      routeSource,
-      /fresh\s*\? await readMarketplaceCampaignPosts\(\)\s*:\s*await readPublicMarketplaceCache/,
-    );
-    assert.match(routeSource, /sendFreshPublicMarketplaceJson/);
+    assert.match(routeSource, /readPublicMarketplaceCache/);
+    assert.doesNotMatch(routeSource, /sendFreshPublicMarketplaceJson/);
   }
   assert.match(
     freshResponseSource,
