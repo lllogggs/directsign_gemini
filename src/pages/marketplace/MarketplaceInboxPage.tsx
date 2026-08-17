@@ -11,7 +11,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { LogoMark } from "../../components/BrandLogo";
 import { AdvertiserAccountSettingsMenu } from "../../components/AdvertiserAccountSettingsMenu";
 import { InfluencerAccountSettingsMenu } from "../../components/InfluencerAccountSettingsMenu";
@@ -27,6 +27,8 @@ import {
   proposalTypeLabels,
   oneToOneProposalTypeOptions,
   type CampaignProposalType,
+  type MarketplaceBrandProfile,
+  type MarketplaceInfluencerProfile,
 } from "../../domain/marketplace";
 import {
   emptyMarketplaceMessageSummary,
@@ -44,6 +46,11 @@ import { finishFastLoginTransition } from "../../domain/fastLoginTransition";
 import { clearVerificationSummaryCache } from "../../hooks/useVerificationSummary";
 import { clearMarketplaceMessageSummaryCache } from "../../hooks/useMarketplaceMessageSummary";
 import { clearNotificationCenterCache } from "../../hooks/useNotificationCenter";
+import { buildLoginRedirect } from "../../domain/navigation";
+import {
+  BrandContactDialog,
+  InfluencerContactDialog,
+} from "./MarketplacePages";
 import {
   Dialog,
   DialogContent,
@@ -61,6 +68,107 @@ type MessageThread = MarketplaceMessagesResponse["threads"][number];
 type PlatformFilter = "all" | InfluencerPlatform;
 type ProposalTypeFilter = "all" | CampaignProposalType;
 type ProposalStatusFilter = "all" | MarketplaceProposalStatus;
+
+function useComposeBrandProfile(handle: string | undefined) {
+  const [state, setState] = useState<
+    | { handle: string; status: "ready"; brand: MarketplaceBrandProfile | null }
+    | { handle: string; status: "error"; message: string }
+    | null
+  >(null);
+
+  useEffect(() => {
+    if (!handle) return;
+    let active = true;
+
+    void apiFetch(`/api/marketplace/brands/${encodeURIComponent(handle)}`, {
+      headers: { Accept: "application/json" },
+    })
+      .then(async (response) => {
+        if (response.status === 404) return { brand: null };
+        if (!response.ok) throw new Error("Marketplace brand failed");
+        return (await response.json()) as { brand: MarketplaceBrandProfile };
+      })
+      .then((data) => {
+        if (active) setState({ handle, status: "ready", brand: data.brand });
+      })
+      .catch(() => {
+        if (active) {
+          setState({
+            handle,
+            status: "error",
+            message: "제안할 브랜드를 불러오지 못했습니다.",
+          });
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [handle]);
+
+  const currentState = state?.handle === handle ? state : null;
+  return {
+    brand:
+      currentState?.status === "ready" ? currentState.brand : null,
+    isLoading: Boolean(handle && !currentState),
+    error:
+      currentState?.status === "error" ? currentState.message : undefined,
+  };
+}
+
+function useComposeInfluencerProfile(handle: string | undefined) {
+  const [state, setState] = useState<
+    | {
+        handle: string;
+        status: "ready";
+        profile: MarketplaceInfluencerProfile | null;
+      }
+    | { handle: string; status: "error"; message: string }
+    | null
+  >(null);
+
+  useEffect(() => {
+    if (!handle) return;
+    let active = true;
+
+    void apiFetch(`/api/marketplace/influencers/${encodeURIComponent(handle)}`, {
+      headers: { Accept: "application/json" },
+      credentials: "include",
+    })
+      .then(async (response) => {
+        if (response.status === 404) return { profile: null };
+        if (!response.ok) throw new Error("Marketplace influencer failed");
+        return (await response.json()) as {
+          profile: MarketplaceInfluencerProfile;
+        };
+      })
+      .then((data) => {
+        if (active) setState({ handle, status: "ready", profile: data.profile });
+      })
+      .catch(() => {
+        if (active) {
+          setState({
+            handle,
+            status: "error",
+            message: "제안할 인플루언서를 불러오지 못했습니다.",
+          });
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [handle]);
+
+  const currentState = state?.handle === handle ? state : null;
+  return {
+    profile:
+      currentState?.status === "ready" ? currentState.profile : null,
+    isLoading: Boolean(handle && !currentState),
+    error:
+      currentState?.status === "error" ? currentState.message : undefined,
+  };
+}
 
 const platformFilterOptions: PlatformFilter[] = [
   "all",
@@ -181,6 +289,8 @@ const roleCopy = {
 
 export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const copy = roleCopy[role];
   const primaryBucket: MarketplaceMessageBucket = role === "advertiser" ? "sent" : "inbox";
   const [state, setState] = useState<InboxState>({ status: "loading" });
@@ -193,6 +303,25 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
   const [query, setQuery] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const composeBrandHandle =
+    role === "influencer" ? searchParams.get("compose")?.trim() : undefined;
+  const composeInfluencerHandle =
+    role === "advertiser" ? searchParams.get("compose")?.trim() : undefined;
+  const {
+    brand: composeBrand,
+    isLoading: isComposeBrandLoading,
+    error: composeBrandError,
+  } = useComposeBrandProfile(composeBrandHandle);
+  const {
+    profile: composeInfluencer,
+    isLoading: isComposeInfluencerLoading,
+    error: composeInfluencerError,
+  } = useComposeInfluencerProfile(composeInfluencerHandle);
+  const closeComposer = useCallback(() => {
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.delete("compose");
+    setSearchParams(nextSearchParams, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const loadMessages = useCallback(async () => {
     setState((current) =>
@@ -206,9 +335,19 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
       });
 
       if (response.status === 401) {
-        navigate(role === "advertiser" ? "/login/advertiser" : "/login/influencer", {
-          replace: true,
-        });
+        const loginPath =
+          role === "advertiser" ? "/login/advertiser" : "/login/influencer";
+        const fallbackPath =
+          role === "advertiser" ? "/advertiser/messages" : "/influencer/messages";
+        navigate(
+          buildLoginRedirect(
+            loginPath,
+            `${location.pathname}${location.search}`,
+            fallbackPath,
+            [role === "advertiser" ? "/advertiser" : "/influencer"],
+          ),
+          { replace: true },
+        );
         return;
       }
 
@@ -231,7 +370,7 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
             : "메시지함을 불러오지 못했습니다.",
       });
     }
-  }, [navigate, role]);
+  }, [location.pathname, location.search, navigate, role]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -669,6 +808,62 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
           </div>
         </section>
       </main>
+
+      {role === "influencer" && state.status === "ready" && composeBrand ? (
+        <BrandContactDialog
+          key={composeBrand.id}
+          brand={composeBrand}
+          onClose={closeComposer}
+          onSubmitted={loadMessages}
+        />
+      ) : role === "influencer" &&
+        state.status === "ready" &&
+        composeBrandHandle &&
+        !isComposeBrandLoading ? (
+        <div
+          role="alert"
+          className="fixed bottom-5 left-1/2 z-[90] flex -translate-x-1/2 items-center gap-3 rounded-[10px] bg-neutral-950 px-4 py-3 text-[12px] font-extrabold text-white shadow-xl"
+        >
+          <span>
+            {composeBrandError ?? "제안할 브랜드를 찾을 수 없습니다."}
+          </span>
+          <button
+            type="button"
+            onClick={closeComposer}
+            className="rounded-md border border-white/30 px-2 py-1 text-[11px]"
+          >
+            닫기
+          </button>
+        </div>
+      ) : role === "advertiser" &&
+        state.status === "ready" &&
+        composeInfluencer ? (
+        <InfluencerContactDialog
+          key={composeInfluencer.id}
+          profile={composeInfluencer}
+          onClose={closeComposer}
+          onSubmitted={loadMessages}
+        />
+      ) : role === "advertiser" &&
+        state.status === "ready" &&
+        composeInfluencerHandle &&
+        !isComposeInfluencerLoading ? (
+        <div
+          role="alert"
+          className="fixed bottom-5 left-1/2 z-[90] flex -translate-x-1/2 items-center gap-3 rounded-[10px] bg-neutral-950 px-4 py-3 text-[12px] font-extrabold text-white shadow-xl"
+        >
+          <span>
+            {composeInfluencerError ?? "제안할 인플루언서를 찾을 수 없습니다."}
+          </span>
+          <button
+            type="button"
+            onClick={closeComposer}
+            className="rounded-md border border-white/30 px-2 py-1 text-[11px]"
+          >
+            닫기
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

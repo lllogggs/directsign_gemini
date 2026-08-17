@@ -1,5 +1,4 @@
 export const CAMPAIGN_TITLE_MAX_GRAPHEMES = 40;
-export const CAMPAIGN_TITLE_MAX_UNBROKEN_GRAPHEMES = 20;
 export const CAMPAIGN_OG_LAYOUT_VERSION = 2;
 
 export const CAMPAIGN_OG_TITLE_FONT_TIERS = [
@@ -110,17 +109,6 @@ export const getCampaignTitleValidationError = (value: unknown) => {
   if (!title) return "캠페인명을 입력해 주세요.";
   if (countCampaignTitleGraphemes(title) > CAMPAIGN_TITLE_MAX_GRAPHEMES) {
     return `캠페인명은 ${CAMPAIGN_TITLE_MAX_GRAPHEMES}자 이내로 입력해 주세요.`;
-  }
-  if (
-    title
-      .split(/\s+/u)
-      .some(
-        (segment) =>
-          countCampaignTitleGraphemes(segment) >
-          CAMPAIGN_TITLE_MAX_UNBROKEN_GRAPHEMES,
-      )
-  ) {
-    return `긴 단어는 ${CAMPAIGN_TITLE_MAX_UNBROKEN_GRAPHEMES}자 안에서 띄어쓰기를 추가해 주세요.`;
   }
   return undefined;
 };

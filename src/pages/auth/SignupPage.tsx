@@ -17,6 +17,10 @@ import {
   PUBLIC_PROFILE_CONSENT_VERSION,
   parseRepresentativeActivityPage,
 } from "../../domain/activityPage";
+import {
+  getAnalyticsConsent,
+  setAnalyticsConsent,
+} from "../../domain/analytics";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { LEGAL_CONTACT_EMAIL } from "../../domain/legalEntity";
 import { getNextPath } from "../../domain/navigation";
@@ -24,7 +28,7 @@ import { translateApiErrorMessage } from "../../domain/userMessages";
 import { useBodyScrollLock } from "../../hooks/useBodyScrollLock";
 
 const TERMS_DOCUMENT_VERSION = "2026-06-02";
-const PRIVACY_POLICY_DOCUMENT_VERSION = "2026-08-11.2";
+const PRIVACY_POLICY_DOCUMENT_VERSION = "2026-08-13.1";
 
 type SignupRole = "advertiser" | "influencer";
 
@@ -147,6 +151,8 @@ const roleConfig = {
 type SignupConsentCopy = {
   termsTitle: string;
   privacyTitle: string;
+  analyticsTitle: string;
+  analyticsNote: string;
   recordNote: string;
   viewLabel: string;
   closeLabel: string;
@@ -210,6 +216,9 @@ type GlobalCreatorSignupCopy = {
 const koreanSignupConsentCopy: SignupConsentCopy = {
   termsTitle: "이용약관 동의",
   privacyTitle: "개인정보 처리방침 동의",
+  analyticsTitle: "서비스 분석 동의 (선택)",
+  analyticsNote:
+    "가입 시 동의하면 공개 안내 페이지의 방문·사용 흐름 개선을 위해 Google Analytics와 Microsoft Clarity를 사용합니다. 동의하지 않아도 서비스 이용에는 영향이 없습니다.",
   recordNote: "동의 일시와 문서 버전이 저장됩니다. 문의:",
   viewLabel: "보기",
   closeLabel: "닫기",
@@ -219,7 +228,7 @@ const koreanSignupConsentCopy: SignupConsentCopy = {
     title: "이용약관",
     items: [
       "연락미 계정 생성과 서비스 이용 조건을 확인합니다.",
-      "계약 작성, 검토 링크, 전자서명 증빙의 기본 책임 범위를 확인합니다.",
+      "계약 작성, 계약서 링크와 PDF 확인, 전자서명 증빙의 기본 책임 범위를 확인합니다.",
       "광고비 지급, 정산, 환불, 세금 처리는 계약 당사자 간 처리합니다.",
       "현재 가입과 기본 서비스 이용은 무료입니다. 향후 일부 또는 전체 기능이 유료로 전환될 수 있으며, 전환 전 안내합니다.",
     ],
@@ -301,6 +310,9 @@ const globalCreatorSignupCopies: Record<
     consent: {
       termsTitle: "Agree to Terms",
       privacyTitle: "Agree to Privacy Policy",
+      analyticsTitle: "Optional analytics consent",
+      analyticsNote:
+        "If you agree at signup, Google Analytics and Microsoft Clarity help us improve visits and interactions on public information pages. You can use the service without agreeing.",
       recordNote: "Consent time and document version are saved. Contact:",
       viewLabel: "View",
       closeLabel: "Close",
@@ -397,6 +409,9 @@ const globalCreatorSignupCopies: Record<
     consent: {
       termsTitle: "利用規約に同意",
       privacyTitle: "プライバシーポリシーに同意",
+      analyticsTitle: "サービス分析に同意（任意）",
+      analyticsNote:
+        "登録時に同意すると、公開案内ページの訪問・利用状況の改善にGoogle AnalyticsとMicrosoft Clarityを使用します。同意しなくてもサービスを利用できます。",
       recordNote: "同意日時と文書バージョンを保存します。お問い合わせ:",
       viewLabel: "確認",
       closeLabel: "閉じる",
@@ -491,6 +506,9 @@ const globalCreatorSignupCopies: Record<
     consent: {
       termsTitle: "同意服务条款",
       privacyTitle: "同意隐私政策",
+      analyticsTitle: "同意服务分析（可选）",
+      analyticsNote:
+        "注册时同意后，Google Analytics 和 Microsoft Clarity 将用于改善公开说明页面的访问和使用体验。不​​同意也可以使用服务。",
       recordNote: "我们会保存同意时间和文档版本。联系邮箱:",
       viewLabel: "查看",
       closeLabel: "关闭",
@@ -671,6 +689,9 @@ export function SignupPage({ role }: { role: SignupRole }) {
     terms: false,
     privacy: false,
   });
+  const [analyticsConsent, setAnalyticsConsentChoice] = useState(
+    () => getAnalyticsConsent() === "granted",
+  );
   const [error, setError] = useState("");
   const [confirmationEmail, setConfirmationEmail] = useState("");
   const [confirmationMessage, setConfirmationMessage] = useState("");
@@ -800,6 +821,8 @@ export function SignupPage({ role }: { role: SignupRole }) {
       if (!response.ok) {
         throw new Error(resolveSignupError(data.error));
       }
+
+      setAnalyticsConsent(analyticsConsent ? "granted" : "denied");
 
       if (data.confirmation_required) {
         setConfirmationEmail(normalizedEmail);
@@ -1072,6 +1095,12 @@ export function SignupPage({ role }: { role: SignupRole }) {
             setConsents((current) => ({ ...current, [key]: !current[key] }))
           }
         />
+        <SignupAnalyticsConsent
+          checked={analyticsConsent}
+          disabled={isSubmitting}
+          copy={globalCopy?.consent ?? koreanSignupConsentCopy}
+          onChange={setAnalyticsConsentChoice}
+        />
         {role === "influencer" ? (
           <label className="flex cursor-pointer items-start gap-2.5 rounded-[10px] border border-blue-100 bg-blue-50/55 px-3 py-3">
             <input
@@ -1189,6 +1218,39 @@ function SignupConsentPanel({
         </a>
       </p>
     </section>
+  );
+}
+
+function SignupAnalyticsConsent({
+  checked,
+  disabled,
+  copy,
+  onChange,
+}: {
+  checked: boolean;
+  disabled: boolean;
+  copy: SignupConsentCopy;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex cursor-pointer items-start gap-2.5 rounded-[10px] border border-neutral-200 bg-white px-3 py-3">
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+        className="mt-0.5 h-4 w-4 shrink-0 accent-[#2563eb]"
+        aria-label={copy.analyticsTitle}
+      />
+      <span className="min-w-0">
+        <span className="block text-[12px] font-bold leading-4 text-neutral-800">
+          {copy.analyticsTitle}
+        </span>
+        <span className="mt-1 block text-[11px] font-semibold leading-4 text-neutral-500">
+          {copy.analyticsNote}
+        </span>
+      </span>
+    </label>
   );
 }
 

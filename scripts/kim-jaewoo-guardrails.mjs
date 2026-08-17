@@ -6,7 +6,9 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 const read = (relativePath) =>
-  fs.readFileSync(path.join(root, relativePath), "utf8");
+  fs
+    .readFileSync(path.join(root, relativePath), "utf8")
+    .replace(/\r\n/g, "\n");
 const exists = (relativePath) => fs.existsSync(path.join(root, relativePath));
 const toDisplayPath = (relativePath) => relativePath.replaceAll(path.sep, "/");
 
@@ -231,8 +233,17 @@ const signupPage = read("src/pages/auth/SignupPage.tsx");
 const contractAdminViewer = read("src/pages/marketing/ContractAdminViewer.tsx");
 const contractViewer = read("src/pages/influencer/ContractViewer.tsx");
 const adminDashboard = read("src/pages/admin/SystemAdminDashboard.tsx");
+const adminAnalyticsDashboard = read(
+  "src/pages/admin/AdminAnalyticsDashboard.tsx",
+);
+const adminAnalyticsDomain = read("src/domain/adminAnalytics.ts");
 const legalConsent = read("src/domain/legalConsent.ts");
 const analytics = read("src/domain/analytics.ts");
+const ownedPageViewClient = read("src/domain/sitePageViews.ts");
+const ownedPageViewDomain = read("src/domain/publicPageViews.ts");
+const ownedPageViewMigration = read(
+  "supabase/migrations/20260813010000_add_owned_site_page_view_counter.sql",
+);
 const xlsxExport = read("src/domain/xlsxExport.ts");
 const legalDocumentPage = read("src/pages/legal/LegalDocumentPage.tsx");
 const legalEntity = read("src/domain/legalEntity.ts");
@@ -326,6 +337,13 @@ const campaignEligibilityMigration = exists(
   "supabase/migrations/20260811120000_add_campaign_eligibility_rules.sql",
 )
   ? read("supabase/migrations/20260811120000_add_campaign_eligibility_rules.sql")
+  : "";
+const campaignStatusTransitionMigration = exists(
+  "supabase/migrations/20260811197000_atomic_campaign_status_transitions.sql",
+)
+  ? read(
+      "supabase/migrations/20260811197000_atomic_campaign_status_transitions.sql",
+    )
   : "";
 const naverInfluencerCredential = exists("server/naver-influencer-credential.ts")
   ? read("server/naver-influencer-credential.ts")
@@ -1588,14 +1606,60 @@ check(
     !clarityPathAllowlist.includes('"/contract/') &&
     !clarityPathAllowlist.includes('"/advertiser/dashboard"') &&
     !clarityPathAllowlist.includes('"/influencer/dashboard"') &&
+    analytics.includes("publicCampaignPathPattern") &&
+    server.includes("https://*.clarity.ms") &&
+    server.includes("https://c.bing.com") &&
     agents.includes(
       "External analytics must never expose contract share tokens",
     ) &&
     legalDocumentPage.includes("Google Analytics · G-PDTVNFRD1W") &&
     legalDocumentPage.includes("Microsoft Clarity · wx0bvf6bl5") &&
     legalDocumentPage.includes("현재 전송 중지") &&
+    legalDocumentPage.includes("현재 활성화") &&
     legalDocumentPage.includes("공유 토큰"),
   "analytics/Clarity must not leak share tokens, contract IDs, signatures, dashboards, or admin screens to external tools",
+);
+
+check(
+  "owned page-view counter stays aggregate-only and public-page scoped",
+  ownedPageViewDomain.includes("PUBLIC_PAGE_VIEW_PAGES") &&
+    ownedPageViewDomain.includes("public_home") &&
+    ownedPageViewClient.includes('"/api/site-page-views"') &&
+    ownedPageViewClient.includes("getPublicPageViewKey") &&
+    ownedPageViewClient.includes('"Content-Type": "application/json"') &&
+    !ownedPageViewClient.includes("localStorage") &&
+    !ownedPageViewClient.includes("document.cookie") &&
+    server.includes('app.post("/api/site-page-views"') &&
+    server.includes("increment_site_page_view_count") &&
+    server.includes("sitePageViewCounterEnabled") &&
+    server.includes("sitePageViewRateLimitMaxAttempts") &&
+    server.includes("sha256Hex(getClientIp(request))") &&
+    server.includes('process.env.DIRECTSIGN_ENABLE_LOCAL_PAGE_VIEW_COUNTER === "true"') &&
+    ownedPageViewMigration.includes("site_page_view_counts") &&
+    ownedPageViewMigration.includes("view_date") &&
+    ownedPageViewMigration.includes("view_count bigint") &&
+    ownedPageViewMigration.includes("revoke execute on function public.increment_site_page_view_count") &&
+    ownedPageViewMigration.includes("No cookie, IP, user, or device identifier is stored"),
+  "Owned page views must store only date/page aggregates, never client identifiers or private routes",
+);
+
+check(
+  "admin analytics stays private, aggregate-only, and comparison-ready",
+  adminAnalyticsDomain.includes("AdminAnalyticsResponse") &&
+    adminAnalyticsDomain.includes("page_breakdown") &&
+    adminAnalyticsDomain.includes("auth_health") &&
+    adminAnalyticsDashboard.includes("`/api/admin/analytics?range=${range}`") &&
+    adminAnalyticsDashboard.includes("CSV 내보내기") &&
+    adminAnalyticsDashboard.includes("카드 설정") &&
+    !adminAnalyticsDashboard.includes("share_token") &&
+    !adminAnalyticsDashboard.includes("requester_email") &&
+    !adminAnalyticsDashboard.includes("contract_id") &&
+    server.includes('app.get("/api/admin/analytics"') &&
+    server.includes('response.setHeader("Cache-Control", "private, no-store")') &&
+    server.includes("readAdminAnalytics(days)") &&
+    server.includes("operational_auth_metric_buckets") &&
+    server.includes("readOwnedSitePageViewRows"),
+  "Admin analytics must expose only private aggregate operations data, never contract or requester identifiers",
 );
 
 check(
@@ -2967,7 +3031,9 @@ check(
     seedTestAccounts.includes("applicantCount: 12") &&
     seedTestAccounts.includes('applicantLimit: "10명"') &&
     server.includes("maxItems = 20") &&
-    server.includes("normalizeBrandCampaigns(activeCampaigns, 20)") &&
+    server.includes("transitionMarketplaceCampaignStatusAtomically") &&
+    campaignStatusTransitionMigration.includes("active_campaigns = v_mirror") &&
+    campaignStatusTransitionMigration.includes("limit 20") &&
     !seedTestAccounts.includes('applicantLimit: "1명"') &&
     !seedQaMarketplaceScenario.includes('applicantLimit: "1명"'),
   "test advertiser campaign dashboard data must show 모집중/진행중/종료 with varied n/10 application counts, not one-person placeholder rows",
@@ -3331,7 +3397,7 @@ check(
     landing.includes('productPreview: "advertiserExportDashboard"') &&
     landing.includes('productPreview: "advertiserApplicants"') &&
     landing.includes('productPreview: "influencerPdf"') &&
-    landing.includes('productPreview: "influencerRevision"') &&
+    landing.includes('productPreview: "influencerSignature"') &&
     landing.includes('productPreview: "influencerDashboard"') &&
     landing.includes("function IntroProposalProductPreview") &&
     landing.includes("function AdvertiserContractDocumentProductPreview") &&
@@ -3343,7 +3409,7 @@ check(
       landing,
     ) &&
     landing.includes("function InfluencerContractPdfPreview") &&
-    landing.includes("function InfluencerRevisionRequestPreview") &&
+    landing.includes("function InfluencerSignatureEvidencePreview") &&
     landing.includes("function InfluencerIntroDashboardPreview") &&
     landing.includes('slide.stage === "final"') &&
     landing.includes("function FinalHandshakeVisual") &&
@@ -3369,7 +3435,7 @@ check(
       "Intro carousel controls should sit together as one page-level bottom-center cluster",
     ) &&
     agents.includes("current approved advertiser flow") &&
-    agents.includes('page 3 highlights the actual "공유 링크 생성"') &&
+    agents.includes('page 3 highlights the actual "서명 링크 만들기"') &&
     agents.includes(
       'page 4 shows the contract dashboard with the "내보내기" chooser',
     ) &&
@@ -3399,7 +3465,7 @@ check(
     landing.includes("function AdvertiserContractDocumentProductPreview") &&
     landing.includes("function AdvertiserShareDmPreview") &&
     landing.includes("function AdvertiserExportDashboardPreview") &&
-    landing.includes("공유 링크 생성") &&
+    landing.includes("서명 링크 만들기") &&
     landing.includes("계약서 확인하고 서명하겠습니다~!") &&
     landing.includes("내보내기") &&
     landing.includes("엑셀 파일") &&
@@ -4337,7 +4403,7 @@ check(
 check(
   "intro influencer explains why not email",
   landing.includes("광고계약") &&
-    landing.includes("흩어진 광고 계약") &&
+    /흩어진[\s\S]{0,120}광고 계약/.test(landing) &&
     landing.includes("위험") &&
     landing.includes("광고비 미지급") &&
     landing.includes("마감일 착오") &&
@@ -4497,9 +4563,6 @@ check(
 check(
   "campaign names use one 40-grapheme client and server rule",
     campaignPresentation.includes("CAMPAIGN_TITLE_MAX_GRAPHEMES = 40") &&
-    campaignPresentation.includes(
-      "CAMPAIGN_TITLE_MAX_UNBROKEN_GRAPHEMES = 20",
-    ) &&
     campaignPresentation.includes('new Intl.Segmenter("ko", { granularity })') &&
     campaignPages.includes("countCampaignTitleGraphemes") &&
     campaignPages.includes("campaignTitleGraphemeCount") &&

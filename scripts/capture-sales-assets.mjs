@@ -513,7 +513,7 @@ const prepareBuilderForCapture = async (client, page) => {
 
         resolve({
           ok: document.body.innerText.includes("필수 조건이 모두 채워졌습니다") &&
-            document.body.innerText.includes("공유 링크 생성")
+            document.body.innerText.includes("서명 링크 만들기")
         });
       } catch (error) {
         reject(error);
@@ -918,7 +918,7 @@ try {
   if (salesContract.token) {
     const influencerContractPage = await openPage(
       client,
-      `${baseUrl}/contract/${encodeURIComponent(salesContract.id)}?token=${encodeURIComponent(
+      `${baseUrl}/contract/${encodeURIComponent(salesContract.id)}#token=${encodeURIComponent(
         salesContract.token,
       )}`,
       { width: 390, height: 844, mobile: true, deviceScaleFactor: 2 },

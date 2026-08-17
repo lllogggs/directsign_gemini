@@ -149,18 +149,29 @@ const startTemporaryServer = async () => {
 };
 
 const ensureServer = async () => {
-  const defaultBaseUrl = process.env.QA_BASE_URL || "http://127.0.0.1:3000";
-  const existingHealth = await readHealth(defaultBaseUrl);
-  if (existingHealth?.ok && (await supportsCurrentApiSurface(defaultBaseUrl))) {
-    return { baseUrl: defaultBaseUrl, health: existingHealth, temporary: false };
+  const requestedBaseUrl = process.env.QA_BASE_URL?.trim();
+  if (requestedBaseUrl) {
+    const existingHealth = await readHealth(requestedBaseUrl);
+    if (
+      existingHealth?.ok &&
+      (await supportsCurrentApiSurface(requestedBaseUrl))
+    ) {
+      return {
+        baseUrl: requestedBaseUrl,
+        health: existingHealth,
+        temporary: false,
+      };
+    }
+
+    if (existingHealth?.ok) {
+      console.log(
+        `Existing QA server at ${requestedBaseUrl} is healthy but does not expose the current QA API surface; starting a temporary server.`,
+      );
+    }
   }
 
-  if (existingHealth?.ok) {
-    console.log(
-      `Existing dev server at ${defaultBaseUrl} is healthy but does not expose the current QA API surface; starting a temporary server.`,
-    );
-  }
-
+  // A default QA run must exercise the current worktree, not an unrelated
+  // long-running preview process that happens to expose the same route names.
   return await startTemporaryServer();
 };
 
@@ -1803,7 +1814,7 @@ const checkInfluencerContractLoginContinuation = async (
           const doc = document.documentElement;
           return {
             pathname: location.pathname,
-            hasSignedHeading: text.includes("서명 완료 후 콘텐츠를 제출하세요"),
+            hasPostSignHeading: text.includes("콘텐츠를 제출하세요"),
             hasLoadFailure: text.includes("계약을 불러올 수 없습니다"),
             overflowX: Math.max(0, doc.scrollWidth - doc.clientWidth),
             scrollWidth: doc.scrollWidth,
@@ -1814,7 +1825,7 @@ const checkInfluencerContractLoginContinuation = async (
       );
       if (
         state.pathname === destinationPath &&
-        state.hasSignedHeading &&
+        state.hasPostSignHeading &&
         !state.hasLoadFailure
       ) {
         break;
@@ -1835,7 +1846,7 @@ const checkInfluencerContractLoginContinuation = async (
 
     const ok =
       state.pathname === destinationPath &&
-      state.hasSignedHeading &&
+      state.hasPostSignHeading &&
       !state.hasLoadFailure &&
       Number(state.overflowX ?? 1) === 0;
     record(
@@ -1843,8 +1854,8 @@ const checkInfluencerContractLoginContinuation = async (
       ok ? "pass" : "fail",
       ok
         ? `contract ${contract.stage}, 320px overflow ${state.overflowX}px`
-        : `path ${state.pathname || "unknown"}, signed heading ${Boolean(
-            state.hasSignedHeading,
+        : `path ${state.pathname || "unknown"}, post-sign heading ${Boolean(
+            state.hasPostSignHeading,
           )}, load failure ${Boolean(state.hasLoadFailure)}, overflow ${
             state.overflowX ?? "unknown"
           }px`,
@@ -2666,7 +2677,7 @@ const main = async () => {
         server.baseUrl,
         "POST",
         "/api/auth/password-reset/complete",
-        [422],
+        [401],
         { password: "abc12345" },
       ),
       await smokeMethodRoute(
@@ -2680,7 +2691,7 @@ const main = async () => {
         server.baseUrl,
         "POST",
         "/api/contracts/nonexistent/signatures/influencer",
-        [400],
+        [409],
         {},
       ),
       await smokeRoute(server.baseUrl, "/api/contracts/nonexistent/deliverables", [404]),
@@ -2688,7 +2699,7 @@ const main = async () => {
         server.baseUrl,
         "POST",
         "/api/contracts/nonexistent/deliverables",
-        [401, 503],
+        [409],
         {},
       ),
       await smokeRoute(server.baseUrl, "/api/contracts/nonexistent/final-pdf", [404]),

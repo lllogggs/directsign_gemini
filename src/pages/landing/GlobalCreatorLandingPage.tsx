@@ -86,7 +86,7 @@ const globalCreatorLandingCopies: Record<
       {
         title: "Contract review",
         description:
-          "Open the contract link, check the PDF, and request clear changes before signing.",
+          "Open the contract link, review the PDF, and agree on any needed changes with the brand in the message center before signing.",
       },
       {
         title: "Proof archive",
@@ -159,7 +159,7 @@ const globalCreatorLandingCopies: Record<
       {
         title: "契約レビュー",
         description:
-          "契約リンクからPDFを開き、署名前に必要な修正を明確に依頼できます。",
+          "契約リンクからPDFを確認し、変更が必要な場合は署名前にメッセージセンターでブランドと合意します。",
       },
       {
         title: "証拠保管",
@@ -231,7 +231,7 @@ const globalCreatorLandingCopies: Record<
       {
         title: "合同确认",
         description:
-          "打开合同链接，查看 PDF，并在签署前清楚提出需要修改的内容。",
+          "打开合同链接查看 PDF；如需变更，请在签署前通过消息中心与品牌确认并达成一致。",
       },
       {
         title: "证据保存",

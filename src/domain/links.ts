@@ -14,5 +14,5 @@ export const getPublicAppOrigin = () =>
 
 export const buildContractShareUrl = (contractId: string, shareToken?: string) =>
   `${getPublicAppOrigin()}/contract/${contractId}${
-    shareToken ? `?token=${encodeURIComponent(shareToken)}` : ""
+    shareToken ? `#token=${encodeURIComponent(shareToken)}` : ""
   }`;

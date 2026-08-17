@@ -20,6 +20,20 @@ import {
 } from "../../domain/verification";
 import { apiFetch } from "../../domain/api";
 import {
+  getPrivateFileSelectionKey,
+  getOrCreatePrivateFileUploadIdentity,
+  isPrivateFileUploadTicketUsable,
+  preparePrivateFileDescriptor,
+  requestPrivateFileUploadTicket,
+  shouldDiscardPrivateFileUploadTicket,
+  shouldRetryPrivateFileUpload,
+  uploadPrivateFileWithTicket,
+  PrivateFileTransferError,
+  type PendingPrivateFileTransfer,
+  type PrivateFileUploadIdentity,
+  type PrivateFileUploadProgress,
+} from "../../domain/privateFileUpload";
+import {
   clearVerificationSummaryCache,
   useVerificationSummary,
 } from "../../hooks/useVerificationSummary";
@@ -58,6 +72,12 @@ const getCurrentKstDate = () => {
 };
 
 type VerificationSubmissionMode = "automatic" | "document";
+type VerificationSubmissionProgress =
+  | PrivateFileUploadProgress
+  | { phase: "idle" | "finalizing" };
+type VerificationUploadAttempt = PrivateFileUploadIdentity & {
+  transfer?: PendingPrivateFileTransfer;
+};
 type VerificationFallbackReason =
   | "not_matched"
   | "service_unavailable"
@@ -73,6 +93,7 @@ interface AdvertiserVerificationForm {
 
 interface AdvertiserVerificationResponse {
   error?: string;
+  code?: string;
   outcome?: "approved" | "evidence_required" | "pending_manual_review";
   reason?: VerificationFallbackReason;
   message?: string;
@@ -161,6 +182,9 @@ export function AdvertiserVerification() {
   const [form, setForm] = useState(initialForm);
   const [file, setFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionProgress, setSubmissionProgress] =
+    useState<VerificationSubmissionProgress>({ phase: "idle" });
+  const [submissionNeedsRetry, setSubmissionNeedsRetry] = useState(false);
   const [error, setError] = useState("");
   const [hasEditedForm, setHasEditedForm] = useState(false);
   const [manualFallback, setManualFallback] =
@@ -170,6 +194,7 @@ export function AdvertiserVerification() {
   const { summary: messageSummary, isLoading: isMessageSummaryLoading } =
     useMarketplaceMessageSummary("advertiser");
   const manualReviewRef = useRef<HTMLElement>(null);
+  const pendingDocumentUploadRef = useRef<VerificationUploadAttempt>();
 
   const advertiser = summary?.advertiser;
   const status = advertiser?.status ?? "not_submitted";
@@ -226,9 +251,13 @@ export function AdvertiserVerification() {
     setForm({ ...visibleForm, ...updates });
     setHasEditedForm(true);
     setError("");
+    pendingDocumentUploadRef.current = undefined;
+    setSubmissionNeedsRetry(false);
     if (resetFallback && !rejected) {
       setManualFallback(null);
       setFile(null);
+      pendingDocumentUploadRef.current = undefined;
+      setSubmissionNeedsRetry(false);
     }
   };
 
@@ -253,17 +282,89 @@ export function AdvertiserVerification() {
     }
 
     setIsSubmitting(true);
+    setSubmissionNeedsRetry(false);
 
     try {
-      const evidenceFile =
-        submissionMode === "document" && file
-          ? {
-              name: file.name,
-              type: inferVerificationFileType(file),
-              size: file.size,
-              data_url: await readFileAsDataUrl(file),
+      let uploadTicketId: string | undefined;
+      if (submissionMode === "document" && file) {
+        const contentType = inferVerificationFileType(file);
+        const selectionKey = getPrivateFileSelectionKey(
+          file,
+          contentType,
+          JSON.stringify([
+            visibleForm.business_registration_number,
+            visibleForm.representative_name,
+            visibleForm.business_start_date,
+            visibleForm.document_issue_date,
+            visibleForm.document_check_number,
+          ]),
+        );
+        let uploadAttempt = pendingDocumentUploadRef.current;
+        const uploadIdentity = getOrCreatePrivateFileUploadIdentity(
+          uploadAttempt,
+          selectionKey,
+        );
+        if (uploadIdentity !== uploadAttempt) {
+          uploadAttempt = uploadIdentity;
+          pendingDocumentUploadRef.current = uploadAttempt;
+        }
+        let transfer = uploadAttempt.transfer;
+        const canReuseTransfer =
+          transfer?.selectionKey === selectionKey &&
+          isPrivateFileUploadTicketUsable(transfer.ticket, "finalize") &&
+          (transfer.uploadState !== "pending" ||
+            isPrivateFileUploadTicketUsable(transfer.ticket, "initiation"));
+
+        if (!canReuseTransfer) {
+          const descriptor = await preparePrivateFileDescriptor(
+            file,
+            contentType,
+            setSubmissionProgress,
+          );
+          setSubmissionProgress({ phase: "ticketing" });
+          const ticket = await requestPrivateFileUploadTicket({
+            endpoint: "/api/verification/advertiser/upload-ticket",
+            descriptor,
+            expectedArea: "verification-advertiser",
+            context: { upload_id: uploadAttempt.uploadId },
+          });
+          transfer = {
+            selectionKey,
+            descriptor,
+            ticket,
+            uploadState: "pending",
+          };
+          uploadAttempt.transfer = transfer;
+        }
+
+        if (transfer.uploadState === "pending") {
+          try {
+            await uploadPrivateFileWithTicket({
+              file,
+              descriptor: transfer.descriptor,
+              ticket: transfer.ticket,
+              tusUploadUrl: transfer.tusUploadUrl,
+              onTusUploadUrl: (url) => {
+                transfer.tusUploadUrl = url;
+              },
+              onProgress: setSubmissionProgress,
+            });
+            transfer.uploadState = "uploaded";
+          } catch (uploadError) {
+            if (
+              uploadError instanceof PrivateFileTransferError &&
+              uploadError.code === "UPLOAD_TICKET_EXPIRED"
+            ) {
+              pendingDocumentUploadRef.current = undefined;
+              throw uploadError;
             }
-          : undefined;
+            transfer.uploadState = "uncertain";
+          }
+        }
+        uploadTicketId = transfer.ticket.ticket_id;
+      }
+
+      setSubmissionProgress({ phase: "finalizing" });
       const response = await apiFetch("/api/verification/advertiser", {
         method: "POST",
         credentials: "include",
@@ -281,7 +382,7 @@ export function AdvertiserVerification() {
             ? {
                 document_issue_date: visibleForm.document_issue_date,
                 document_check_number: visibleForm.document_check_number,
-                evidence_file: evidenceFile,
+                upload_ticket_id: uploadTicketId,
               }
             : {}),
         }),
@@ -290,6 +391,15 @@ export function AdvertiserVerification() {
       const data = (await response.json()) as AdvertiserVerificationResponse;
 
       if (!response.ok) {
+        const uploadAttempt = pendingDocumentUploadRef.current;
+        if (uploadAttempt?.transfer) {
+          if (shouldRetryPrivateFileUpload(data.code)) {
+            uploadAttempt.transfer.uploadState = "pending";
+          }
+          if (shouldDiscardPrivateFileUploadTicket(response.status, data.code)) {
+            pendingDocumentUploadRef.current = undefined;
+          }
+        }
         throw new Error(
           translateApiErrorMessage(data.error, "사업자 정보를 확인하지 못했습니다."),
         );
@@ -309,12 +419,23 @@ export function AdvertiserVerification() {
       }
 
       setFile(null);
+      pendingDocumentUploadRef.current = undefined;
       setForm(initialForm);
       setHasEditedForm(false);
       setManualFallback(null);
       setShowUpdateForm(false);
       await refresh();
     } catch (submitError) {
+      if (
+        submitError instanceof PrivateFileTransferError &&
+        shouldDiscardPrivateFileUploadTicket(
+          submitError.status ?? 0,
+          submitError.code,
+        )
+      ) {
+        pendingDocumentUploadRef.current = undefined;
+      }
+      setSubmissionNeedsRetry(true);
       setError(
         submitError instanceof Error
           ? translateApiErrorMessage(
@@ -324,6 +445,7 @@ export function AdvertiserVerification() {
           : "사업자 정보를 확인하지 못했습니다.",
       );
     } finally {
+      setSubmissionProgress({ phase: "idle" });
       setIsSubmitting(false);
     }
   };
@@ -605,11 +727,15 @@ export function AdvertiserVerification() {
                               const nextError = validateVerificationFile(nextFile);
                               if (nextError) {
                                 setFile(null);
+                                pendingDocumentUploadRef.current = undefined;
+                                setSubmissionNeedsRetry(false);
                                 setError(nextError);
                                 event.currentTarget.value = "";
                                 return;
                               }
                               setFile(nextFile);
+                              pendingDocumentUploadRef.current = undefined;
+                              setSubmissionNeedsRetry(false);
                               setError("");
                             }}
                           />
@@ -634,13 +760,27 @@ export function AdvertiserVerification() {
                   disabled={isSubmitting || isLoading}
                   className="yl-primary-action h-12 w-full rounded-[8px] px-5 text-sm font-bold transition disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500 disabled:shadow-none"
                 >
-                  {isSubmitting
-                    ? activeFallback
-                      ? "서류 제출 중"
-                      : "확인 중"
-                    : activeFallback
-                      ? "서류 심사 요청"
-                      : "사업자 인증하기"}
+                  <span aria-live="polite">
+                    {isSubmitting
+                      ? submissionProgress.phase === "hashing"
+                        ? "파일 확인 중"
+                        : submissionProgress.phase === "ticketing"
+                          ? "업로드 준비 중"
+                          : submissionProgress.phase === "uploading"
+                            ? `업로드 중${
+                                submissionProgress.percent === undefined
+                                  ? ""
+                                  : ` ${submissionProgress.percent}%`
+                              }`
+                            : activeFallback
+                              ? "제출 확인 중"
+                              : "확인 중"
+                      : submissionNeedsRetry
+                        ? "다시 시도"
+                        : activeFallback
+                          ? "서류 심사 요청"
+                          : "사업자 인증하기"}
+                  </span>
                 </button>
               </form>
             ) : null}
@@ -809,13 +949,4 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
       </p>
     </div>
   );
-}
-
-function readFileAsDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ""));
-    reader.onerror = () => reject(new Error("파일을 읽지 못했습니다."));
-    reader.readAsDataURL(file);
-  });
 }
