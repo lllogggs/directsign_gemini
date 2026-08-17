@@ -24,6 +24,16 @@ const read = (path: string) => readFileSync(join(root, path), "utf8");
 
 const advertiserUserId = "11111111-1111-4111-8111-111111111111";
 const influencerUserId = "22222222-2222-4222-8222-222222222222";
+const adminUserId = "44444444-4444-4444-8444-444444444444";
+const advertiserAuthSessionId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const influencerAuthSessionId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const adminAuthSessionId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+const authSessionIdForUser = (userId: string) =>
+  userId === advertiserUserId
+    ? advertiserAuthSessionId
+    : userId === adminUserId
+      ? adminAuthSessionId
+      : influencerAuthSessionId;
 
 type RefreshMode =
   | "success"
@@ -47,6 +57,17 @@ type FakeSupabaseState = {
   adminMfaAttemptCounts: Map<string, number>;
   adminMfaReservations: Map<string, string[]>;
   adminMfaFinalizeUnavailable: boolean;
+  adminMfaFactors: Array<{
+    id: string;
+    factor_type: "totp";
+    friendly_name: string;
+    status: "verified" | "unverified";
+  }>;
+  adminMfaEnrollCalls: number;
+  adminMfaUnenrollCalls: number;
+  adminMfaChallengeCalls: number;
+  adminMfaVerifyCalls: number;
+  adminMfaDirectListCalls: number;
   rateLimitClearUnavailable: boolean;
   rateLimitUnavailable: boolean;
   rejectExpiredAccessLogout: boolean;
@@ -66,6 +87,12 @@ const fakeSupabaseState: FakeSupabaseState = {
   adminMfaAttemptCounts: new Map(),
   adminMfaReservations: new Map(),
   adminMfaFinalizeUnavailable: false,
+  adminMfaFactors: [],
+  adminMfaEnrollCalls: 0,
+  adminMfaUnenrollCalls: 0,
+  adminMfaChallengeCalls: 0,
+  adminMfaVerifyCalls: 0,
+  adminMfaDirectListCalls: 0,
   rateLimitClearUnavailable: false,
   rateLimitUnavailable: false,
   rejectExpiredAccessLogout: false,
@@ -132,11 +159,23 @@ const readJsonBody = async (request: import("node:http").IncomingMessage) => {
 
 const profileForUser = (userId: string) => ({
   id: userId,
-  role: userId === advertiserUserId ? "marketer" : "influencer",
-  name: userId === advertiserUserId ? "Session Advertiser" : "Session Influencer",
+  role:
+    userId === advertiserUserId
+      ? "marketer"
+      : userId === adminUserId
+        ? "admin"
+        : "influencer",
+  name:
+    userId === advertiserUserId
+      ? "Session Advertiser"
+      : userId === adminUserId
+        ? "Session Admin"
+        : "Session Influencer",
   email:
     userId === advertiserUserId
       ? "session-advertiser@example.test"
+      : userId === adminUserId
+        ? "session-admin@example.test"
       : "session-influencer@example.test",
   company_name: userId === advertiserUserId ? "Session Brand" : null,
   activity_categories: [],
@@ -150,16 +189,37 @@ const profileForUser = (userId: string) => ({
   data_origin: "test",
 });
 
-const createUnsignedTestAccessToken = (userId: string, sessionId: string) =>
-  [
+const createUnsignedTestAccessToken = (
+  userId: string,
+  sessionId: string,
+  {
+    aal = "aal1",
+    amr = [],
+  }: {
+    aal?: "aal1" | "aal2";
+    amr?: Array<{ method: string; timestamp: number }>;
+  } = {},
+) => {
+  const now = Math.floor(Date.now() / 1_000);
+  return [
     Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString(
       "base64url",
     ),
     Buffer.from(
-      JSON.stringify({ sub: userId, session_id: sessionId, aal: "aal1" }),
+      JSON.stringify({
+        sub: userId,
+        session_id: sessionId,
+        aal,
+        aud: "authenticated",
+        role: "authenticated",
+        exp: now + userSessionAccessMaxAgeSeconds,
+        iat: now,
+        amr,
+      }),
     ).toString("base64url"),
     "test-signature",
   ].join(".");
+};
 
 const resetFakeSupabase = (mode: RefreshMode, delayMs = 0) => {
   fakeSupabaseState.mode = mode;
@@ -174,6 +234,12 @@ const resetFakeSupabase = (mode: RefreshMode, delayMs = 0) => {
   fakeSupabaseState.adminMfaAttemptCounts.clear();
   fakeSupabaseState.adminMfaReservations.clear();
   fakeSupabaseState.adminMfaFinalizeUnavailable = false;
+  fakeSupabaseState.adminMfaFactors = [];
+  fakeSupabaseState.adminMfaEnrollCalls = 0;
+  fakeSupabaseState.adminMfaUnenrollCalls = 0;
+  fakeSupabaseState.adminMfaChallengeCalls = 0;
+  fakeSupabaseState.adminMfaVerifyCalls = 0;
+  fakeSupabaseState.adminMfaDirectListCalls = 0;
   fakeSupabaseState.rateLimitClearUnavailable = false;
   fakeSupabaseState.rateLimitUnavailable = false;
   fakeSupabaseState.rejectExpiredAccessLogout = false;
@@ -428,11 +494,19 @@ describe("server auth refresh integration", { concurrency: false }, () => {
         fakeSupabaseState.passwordGrantCalls += 1;
         const body = await readJsonBody(request);
         const email = String(body.email ?? "").toLowerCase();
-        const userId = email.includes("advertiser")
-          ? advertiserUserId
-          : influencerUserId;
+        const userId = email.includes("admin")
+          ? adminUserId
+          : email.includes("advertiser")
+            ? advertiserUserId
+            : influencerUserId;
         sendJson(response, 200, {
-          access_token: `${userId}-password-access`,
+          access_token:
+            userId === adminUserId
+              ? createUnsignedTestAccessToken(
+                  userId,
+                  authSessionIdForUser(userId),
+                )
+              : `${userId}-password-access`,
           refresh_token: `${userId}-password-refresh`,
           expires_in: userSessionAccessMaxAgeSeconds,
           user: {
@@ -512,6 +586,30 @@ describe("server auth refresh integration", { concurrency: false }, () => {
       }
 
       if (requestUrl.pathname === "/auth/v1/user") {
+        const accessToken = String(request.headers.authorization ?? "").replace(
+          /^Bearer\s+/i,
+          "",
+        );
+        const accessTokenClaims = (() => {
+          try {
+            return JSON.parse(
+              Buffer.from(accessToken.split(".")[1] ?? "", "base64url").toString(
+                "utf8",
+              ),
+            ) as { sub?: string };
+          } catch {
+            return {};
+          }
+        })();
+        if (accessTokenClaims.sub === adminUserId) {
+          sendJson(response, 200, {
+            id: adminUserId,
+            email: profileForUser(adminUserId).email,
+            email_confirmed_at: "2026-01-01T00:00:00.000Z",
+            factors: fakeSupabaseState.adminMfaFactors,
+          });
+          return;
+        }
         if (fakeSupabaseState.mode === "user-transient") {
           sendJson(response, 503, { message: "user verification unavailable" });
           return;
@@ -525,6 +623,93 @@ describe("server auth refresh integration", { concurrency: false }, () => {
           return;
         }
         sendJson(response, 401, { message: "expired access token" });
+        return;
+      }
+
+      if (
+        request.method === "GET" &&
+        requestUrl.pathname === "/auth/v1/factors"
+      ) {
+        fakeSupabaseState.adminMfaDirectListCalls += 1;
+        sendJson(response, 500, { message: "direct factor listing is forbidden" });
+        return;
+      }
+
+      if (
+        request.method === "POST" &&
+        requestUrl.pathname === "/auth/v1/factors"
+      ) {
+        fakeSupabaseState.adminMfaEnrollCalls += 1;
+        const factor = {
+          id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+          factor_type: "totp" as const,
+          friendly_name: "연락미 operator",
+          status: "unverified" as const,
+        };
+        fakeSupabaseState.adminMfaFactors = [factor];
+        sendJson(response, 200, {
+          id: factor.id,
+          type: "totp",
+          friendly_name: factor.friendly_name,
+          totp: {
+            qr_code: "<svg xmlns='http://www.w3.org/2000/svg'></svg>",
+            secret: "TEST-ADMIN-TOTP-SECRET",
+            uri: "otpauth://totp/test",
+          },
+        });
+        return;
+      }
+
+      const adminFactorPath = requestUrl.pathname.match(
+        /^\/auth\/v1\/factors\/([^/]+)(?:\/(challenge|verify))?$/,
+      );
+      if (adminFactorPath && request.method === "DELETE") {
+        fakeSupabaseState.adminMfaUnenrollCalls += 1;
+        fakeSupabaseState.adminMfaFactors = fakeSupabaseState.adminMfaFactors.filter(
+          (factor) => factor.id !== adminFactorPath[1],
+        );
+        sendJson(response, 200, { id: adminFactorPath[1] });
+        return;
+      }
+      if (
+        adminFactorPath?.[2] === "challenge" &&
+        request.method === "POST"
+      ) {
+        fakeSupabaseState.adminMfaChallengeCalls += 1;
+        sendJson(response, 200, {
+          id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+          type: "totp",
+          expires_at: Math.floor(Date.now() / 1_000) + 60,
+        });
+        return;
+      }
+      if (adminFactorPath?.[2] === "verify" && request.method === "POST") {
+        fakeSupabaseState.adminMfaVerifyCalls += 1;
+        const body = await readJsonBody(request);
+        if (body.code !== "123456") {
+          sendJson(response, 400, { message: "invalid TOTP code" });
+          return;
+        }
+        fakeSupabaseState.adminMfaFactors = fakeSupabaseState.adminMfaFactors.map(
+          (factor) => ({ ...factor, status: "verified" as const }),
+        );
+        const now = Math.floor(Date.now() / 1_000);
+        sendJson(response, 200, {
+          access_token: createUnsignedTestAccessToken(
+            adminUserId,
+            adminAuthSessionId,
+            { aal: "aal2", amr: [{ method: "totp", timestamp: now }] },
+          ),
+          refresh_token: "admin-mfa-verified-refresh",
+          expires_in: userSessionAccessMaxAgeSeconds,
+          token_type: "bearer",
+          user: {
+            id: adminUserId,
+            email: profileForUser(adminUserId).email,
+            email_confirmed_at: "2026-01-01T00:00:00.000Z",
+            factors: fakeSupabaseState.adminMfaFactors,
+          },
+        });
         return;
       }
 
@@ -1234,6 +1419,112 @@ describe("server auth refresh integration", { concurrency: false }, () => {
       assert.equal(payload.authenticated, false);
       assertPrivateSessionHeaders(response);
     }
+  });
+
+  it("runs admin enrollment and TOTP verification through the official MFA SDK flow", async () => {
+    resetFakeSupabase("success");
+    fakeSupabaseState.adminMfaFactors = [
+      {
+        id: "99999999-9999-4999-8999-999999999999",
+        factor_type: "totp",
+        friendly_name: "unfinished operator",
+        status: "unverified",
+      },
+    ];
+    const cookieJar = new Map<string, string>();
+    const loginResponse = await fetch(`${appBaseUrl}/api/admin/login`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email: "session-admin@example.test",
+        password: "test-password",
+      }),
+    });
+    const loginPayload = (await loginResponse.json()) as {
+      authenticated?: boolean;
+      mfa_required?: boolean;
+      enrollment_required?: boolean;
+      qr_code?: string;
+      secret?: string;
+    };
+    applySetCookies(cookieJar, getCookieHeaders(loginResponse));
+
+    assert.equal(loginResponse.status, 200);
+    assert.equal(loginPayload.authenticated, false);
+    assert.equal(loginPayload.mfa_required, true);
+    assert.equal(loginPayload.enrollment_required, true);
+    assert.match(loginPayload.qr_code ?? "", /^data:image\/svg\+xml;utf-8,/);
+    assert.ok(loginPayload.secret);
+    assert.equal(fakeSupabaseState.adminMfaEnrollCalls, 1);
+    assert.equal(fakeSupabaseState.adminMfaUnenrollCalls, 1);
+    assert.equal(fakeSupabaseState.adminMfaDirectListCalls, 0);
+    assert.ok(cookieJar.has("directsign_admin_access"));
+    assert.ok(cookieJar.has("directsign_admin_refresh"));
+    assert.ok(cookieJar.has("directsign_admin_mfa_factor"));
+
+    const verifyResponse = await fetch(`${appBaseUrl}/api/admin/mfa/verify`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Cookie: serializeCookieJar(cookieJar),
+      },
+      body: JSON.stringify({ code: "123456" }),
+    });
+    const verifyPayload = (await verifyResponse.json()) as {
+      authenticated?: boolean;
+      operator?: { id?: string; email?: string };
+    };
+
+    assert.equal(verifyResponse.status, 200);
+    assert.equal(verifyPayload.authenticated, true);
+    assert.equal(verifyPayload.operator?.id, adminUserId);
+    assert.equal(verifyPayload.operator?.email, profileForUser(adminUserId).email);
+    assert.equal(fakeSupabaseState.adminMfaChallengeCalls, 1);
+    assert.equal(fakeSupabaseState.adminMfaVerifyCalls, 1);
+    assert.equal(fakeSupabaseState.adminMfaDirectListCalls, 0);
+    assert.equal(fakeSupabaseState.adminMfaFactors[0]?.status, "verified");
+  });
+
+  it("reuses an existing verified admin TOTP factor without reenrollment", async () => {
+    resetFakeSupabase("success");
+    fakeSupabaseState.adminMfaFactors = [
+      {
+        id: "88888888-8888-4888-8888-888888888888",
+        factor_type: "totp",
+        friendly_name: "existing operator",
+        status: "verified",
+      },
+    ];
+    const response = await fetch(`${appBaseUrl}/api/admin/login`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email: "session-admin@example.test",
+        password: "test-password",
+      }),
+    });
+    const payload = (await response.json()) as {
+      mfa_required?: boolean;
+      enrollment_required?: boolean;
+      qr_code?: string;
+      secret?: string;
+    };
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.mfa_required, true);
+    assert.equal(payload.enrollment_required, false);
+    assert.equal(payload.qr_code, undefined);
+    assert.equal(payload.secret, undefined);
+    assert.equal(fakeSupabaseState.adminMfaEnrollCalls, 0);
+    assert.equal(fakeSupabaseState.adminMfaUnenrollCalls, 0);
+    assert.equal(fakeSupabaseState.adminMfaDirectListCalls, 0);
   });
 
   it("atomically admits at most five parallel admin MFA attempts and rolls back once", async () => {

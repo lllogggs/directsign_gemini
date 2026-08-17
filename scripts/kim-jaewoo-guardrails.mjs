@@ -1187,6 +1187,21 @@ check(
 );
 
 check(
+  "production operator MFA uses the official Supabase Auth SDK",
+  agents.includes("Production operator MFA must use the official Supabase Auth SDK") &&
+    packageJson.dependencies?.["@supabase/supabase-js"] &&
+    server.includes("createAdminMfaSupabaseClient") &&
+    server.includes("client.auth.mfa.listFactors()") &&
+    server.includes("client.auth.mfa.enroll(") &&
+    server.includes("client.auth.mfa.unenroll(") &&
+    server.includes("client.auth.mfa.challenge(") &&
+    server.includes("client.auth.mfa.verify(") &&
+    !server.includes("fetchSupabaseAdminMfa") &&
+    !server.includes('supabaseAuthUrl("/factors")'),
+  "Admin MFA must stay on one non-persistent official Supabase client per request/session handoff; guessed or undocumented direct factor REST calls are forbidden",
+);
+
+check(
   "login and route transition budgets stay strict",
   qaStandard.includes(
     "loginMs: Number(process.env.QA_LOGIN_BUDGET_MS || 1300)",

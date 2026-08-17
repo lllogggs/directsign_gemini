@@ -3188,8 +3188,15 @@ describe("yeollock.me security regressions", () => {
       /v_existing_reservation\.reservation_ttl_seconds[\s\S]*?<> p_reservation_ttl_seconds/,
     );
     assert.match(server, /type AdminMfaProviderStage =[\s\S]*?"enroll"[\s\S]*?"remove"/);
-    assert.match(server, /fetchSupabaseAdminMfa\(\s*"enroll"/);
-    assert.match(server, /fetchSupabaseAdminMfa\(\s*"remove"/);
+    assert.match(server, /createClient\(supabaseUrl!, supabasePublishableKey!/);
+    assert.match(server, /persistSession: false/);
+    assert.match(server, /client\.auth\.mfa\.listFactors\(\)/);
+    assert.match(server, /client\.auth\.mfa\.enroll\(/);
+    assert.match(server, /client\.auth\.mfa\.unenroll\(/);
+    assert.match(server, /client\.auth\.mfa\.challenge\(/);
+    assert.match(server, /client\.auth\.mfa\.verify\(/);
+    assert.doesNotMatch(server, /fetchSupabaseAdminMfa/);
+    assert.doesNotMatch(server, /supabaseAuthUrl\("\/factors"\)/);
     assert.match(
       server,
       /setAdminSessionCookies\([\s\S]*?adminPendingSessionMaxAgeSeconds[\s\S]*?sendRetryableAdminMfaUnavailable/,

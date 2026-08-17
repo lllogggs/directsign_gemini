@@ -1,5 +1,6 @@
 import express from "express";
 import dotenv from "dotenv";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import { createServer as createHttpServer, request as httpRequest } from "node:http";
@@ -1470,7 +1471,7 @@ interface SupabaseAuthUser {
 
 interface SupabaseMfaFactor {
   id: string;
-  factor_type?: "totp" | "phone";
+  factor_type?: "totp" | "phone" | "webauthn";
   friendly_name?: string | null;
   status?: "verified" | "unverified";
   created_at?: string;
@@ -7433,21 +7434,91 @@ class SupabaseAdminMfaProviderError extends Error {
   }
 }
 
-const fetchSupabaseAdminMfa = async (
+type AdminMfaSupabaseClient = SupabaseClient<any, "public", "public", any, any>;
+
+const readAdminMfaProviderStatus = (error: unknown) => {
+  if (!error || typeof error !== "object" || !("status" in error)) {
+    return undefined;
+  }
+  const status = Number((error as { status?: unknown }).status);
+  return Number.isInteger(status) && status > 0 ? status : undefined;
+};
+
+const runAdminMfaSdkOperation = async <T>(
   stage: AdminMfaProviderStage,
-  url: string,
-  init: RequestInit,
+  operation: () => Promise<{ data: T | null; error: unknown }>,
 ) => {
   try {
-    return await fetch(url, init);
+    const { data, error } = await operation();
+    if (error) {
+      throw new SupabaseAdminMfaProviderError(
+        stage,
+        readAdminMfaProviderStatus(error),
+        `Supabase MFA ${stage} failed`,
+        error,
+      );
+    }
+    if (data === null) {
+      throw new SupabaseAdminMfaProviderError(
+        stage,
+        undefined,
+        `Supabase MFA ${stage} returned no data`,
+      );
+    }
+    return data;
   } catch (error) {
+    if (error instanceof SupabaseAdminMfaProviderError) throw error;
     throw new SupabaseAdminMfaProviderError(
       stage,
-      undefined,
-      `Supabase MFA ${stage} request was unavailable`,
+      readAdminMfaProviderStatus(error),
+      `Supabase MFA ${stage} was unavailable`,
       error,
     );
   }
+};
+
+const createAdminMfaSupabaseClient = async ({
+  accessToken,
+  refreshToken,
+}: {
+  accessToken: string;
+  refreshToken?: string;
+}) => {
+  if (!hasText(refreshToken)) {
+    throw new SupabaseAdminMfaProviderError(
+      "factor_list",
+      401,
+      "Supabase MFA requires a complete authenticated session",
+    );
+  }
+  const client = createClient(supabaseUrl!, supabasePublishableKey!, {
+    auth: {
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      persistSession: false,
+    },
+    global: {
+      fetch: (input, init) =>
+        fetch(input, {
+          ...init,
+          signal: init?.signal ?? createSupabaseTimeoutSignal(),
+        }),
+    },
+  });
+  const initialized = await runAdminMfaSdkOperation("factor_list", () =>
+    client.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken!,
+    }),
+  );
+  if (!initialized.session) {
+    throw new SupabaseAdminMfaProviderError(
+      "factor_list",
+      401,
+      "Supabase MFA session initialization failed",
+    );
+  }
+  return client;
 };
 
 const isRetryableAdminMfaFailure = (error: unknown) =>
@@ -7471,37 +7542,35 @@ const normalizeMfaFactorPayload = (payload: unknown): SupabaseMfaFactor[] => {
   if (Array.isArray(payload)) return payload as SupabaseMfaFactor[];
   if (!payload || typeof payload !== "object") return [];
   const record = payload as Record<string, unknown>;
-  const candidates = [record.all, record.totp, record.phone, record.factors];
+  const candidates = [
+    record.all,
+    record.totp,
+    record.phone,
+    record.webauthn,
+    record.factors,
+  ];
   return candidates.flatMap((value) =>
     Array.isArray(value) ? (value as SupabaseMfaFactor[]) : [],
   );
 };
 
 const listSupabaseMfaFactors = async (
-  accessToken: string,
+  client: AdminMfaSupabaseClient,
   user?: SupabaseAuthUser,
   { authoritative = false }: { authoritative?: boolean } = {},
 ) => {
   const embedded = normalizeMfaFactorPayload(user?.factors);
-  const response = await fetchSupabaseAdminMfa(
-    "factor_list",
-    supabaseAuthUrl("/factors"),
-    {
-      headers: supabaseAuthHeaders(accessToken),
-      signal: createSupabaseTimeoutSignal(),
-    },
-  );
-  if (!response.ok) {
-    if (!authoritative && embedded.length > 0) return embedded;
-    throw new SupabaseAdminMfaProviderError(
-      "factor_list",
-      response.status,
-      `Supabase MFA factor list failed (${response.status}): ${await parseSupabaseError(
-        response,
-      )}`,
+  let fetched: SupabaseMfaFactor[];
+  try {
+    fetched = normalizeMfaFactorPayload(
+      await runAdminMfaSdkOperation("factor_list", () =>
+        client.auth.mfa.listFactors(),
+      ),
     );
+  } catch (error) {
+    if (!authoritative && embedded.length > 0) return embedded;
+    throw error;
   }
-  const fetched = normalizeMfaFactorPayload(await response.json());
   const factors = new Map<string, SupabaseMfaFactor>();
   for (const factor of authoritative ? fetched : [...embedded, ...fetched]) {
     if (hasText(factor.id)) factors.set(factor.id, factor);
@@ -7510,44 +7579,24 @@ const listSupabaseMfaFactors = async (
 };
 
 const getVerifiedAdminTotpFactor = async (
-  accessToken: string,
+  client: AdminMfaSupabaseClient,
   user?: SupabaseAuthUser,
   options?: { authoritative?: boolean },
 ) =>
-  (await listSupabaseMfaFactors(accessToken, user, options)).find(
+  (await listSupabaseMfaFactors(client, user, options)).find(
     (factor) =>
       factor.factor_type === "totp" && factor.status === "verified",
   );
 
 const enrollAdminTotpFactor = async (
-  accessToken: string,
+  client: AdminMfaSupabaseClient,
 ): Promise<AdminTotpEnrollment> => {
-  const response = await fetchSupabaseAdminMfa(
-    "enroll",
-    supabaseAuthUrl("/factors"),
-    {
-      method: "POST",
-      headers: supabaseAuthHeaders(accessToken),
-      signal: createSupabaseTimeoutSignal(),
-      body: JSON.stringify({
-        factor_type: "totp",
-        friendly_name: `${productName} operator`,
-      }),
-    },
+  const payload = await runAdminMfaSdkOperation("enroll", () =>
+    client.auth.mfa.enroll({
+      factorType: "totp",
+      friendlyName: `${productName} operator`,
+    }),
   );
-  if (!response.ok) {
-    throw new SupabaseAdminMfaProviderError(
-      "enroll",
-      response.status,
-      `Supabase MFA enrollment failed (${response.status}): ${await parseSupabaseError(
-        response,
-      )}`,
-    );
-  }
-  const payload = (await response.json()) as {
-    id?: string;
-    totp?: { qr_code?: string; secret?: string; uri?: string };
-  };
   if (!hasText(payload.id)) throw new Error("Supabase returned an invalid MFA factor");
   return {
     id: payload.id!,
@@ -7557,80 +7606,36 @@ const enrollAdminTotpFactor = async (
 };
 
 const removeSupabaseMfaFactor = async (
-  accessToken: string,
+  client: AdminMfaSupabaseClient,
   factorId: string,
 ) => {
-  const response = await fetchSupabaseAdminMfa(
-    "remove",
-    supabaseAuthUrl(`/factors/${encodeURIComponent(factorId)}`),
-    {
-      method: "DELETE",
-      headers: supabaseAuthHeaders(accessToken),
-      signal: createSupabaseTimeoutSignal(),
-    },
+  await runAdminMfaSdkOperation("remove", () =>
+    client.auth.mfa.unenroll({ factorId }),
   );
-  if (!response.ok) {
-    throw new SupabaseAdminMfaProviderError(
-      "remove",
-      response.status,
-      `Supabase MFA factor removal failed (${response.status}): ${await parseSupabaseError(
-        response,
-      )}`,
-    );
-  }
 };
 
 const verifyAdminTotpFactor = async ({
-  accessToken,
+  client,
   factorId,
   code,
 }: {
-  accessToken: string;
+  client: AdminMfaSupabaseClient;
   factorId: string;
   code: string;
 }) => {
-  const challengeResponse = await fetchSupabaseAdminMfa(
-    "challenge",
-    supabaseAuthUrl(`/factors/${encodeURIComponent(factorId)}/challenge`),
-    {
-      method: "POST",
-      headers: supabaseAuthHeaders(accessToken),
-      signal: createSupabaseTimeoutSignal(),
-      body: "{}",
-    },
+  const challenge = await runAdminMfaSdkOperation("challenge", () =>
+    client.auth.mfa.challenge({ factorId }),
   );
-  if (!challengeResponse.ok) {
-    throw new SupabaseAdminMfaProviderError(
-      "challenge",
-      challengeResponse.status,
-      `Supabase MFA challenge failed (${challengeResponse.status}): ${await parseSupabaseError(
-        challengeResponse,
-      )}`,
-    );
-  }
-  const challenge = (await challengeResponse.json()) as { id?: string };
   if (!hasText(challenge.id)) throw new Error("Supabase returned an invalid MFA challenge");
 
-  const verifyResponse = await fetchSupabaseAdminMfa(
-    "verify",
-    supabaseAuthUrl(`/factors/${encodeURIComponent(factorId)}/verify`),
-    {
-      method: "POST",
-      headers: supabaseAuthHeaders(accessToken),
-      signal: createSupabaseTimeoutSignal(),
-      body: JSON.stringify({ challenge_id: challenge.id, code }),
-    },
+  const verified = await runAdminMfaSdkOperation("verify", () =>
+    client.auth.mfa.verify({
+      factorId,
+      challengeId: challenge.id,
+      code,
+    }),
   );
-  if (!verifyResponse.ok) {
-    throw new SupabaseAdminMfaProviderError(
-      "verify",
-      verifyResponse.status,
-      `Supabase MFA verification failed (${verifyResponse.status}): ${await parseSupabaseError(
-        verifyResponse,
-      )}`,
-    );
-  }
-  return (await verifyResponse.json()) as SupabaseAuthSession;
+  return verified as SupabaseAuthSession;
 };
 
 const registerAdminOperatorSession = async (
@@ -7766,7 +7771,11 @@ const authenticateAdminRequest = async (
   });
   let verifiedTotp: SupabaseMfaFactor | undefined;
   try {
-    verifiedTotp = await getVerifiedAdminTotpFactor(accessToken, user, {
+    const mfaClient = await createAdminMfaSupabaseClient({
+      accessToken,
+      refreshToken: refreshedSession?.refresh_token ?? tokens.refreshToken,
+    });
+    verifiedTotp = await getVerifiedAdminTotpFactor(mfaClient, user, {
       authoritative: true,
     });
   } catch (error) {
@@ -29352,8 +29361,12 @@ app.post("/api/admin/login", async (request, response, next) => {
     let pendingFactorId: string | undefined;
     metricRequest.authMetricOperation = "admin_mfa_challenge";
     try {
+      const mfaClient = await createAdminMfaSupabaseClient({
+        accessToken: session.access_token,
+        refreshToken: session.refresh_token,
+      });
       const factors = await listSupabaseMfaFactors(
-        session.access_token,
+        mfaClient,
         session.user,
         { authoritative: true },
       );
@@ -29369,10 +29382,10 @@ app.post("/api/admin/login", async (request, response, next) => {
         );
         for (const unfinished of unfinishedFactors) {
           pendingFactorId = unfinished.id;
-          await removeSupabaseMfaFactor(session.access_token, unfinished.id);
+          await removeSupabaseMfaFactor(mfaClient, unfinished.id);
           pendingFactorId = undefined;
         }
-        enrollment = await enrollAdminTotpFactor(session.access_token);
+        enrollment = await enrollAdminTotpFactor(mfaClient);
         factor = { id: enrollment.id, factor_type: "totp", status: "unverified" };
         pendingFactorId = factor.id;
       }
@@ -29474,9 +29487,14 @@ app.post("/api/admin/mfa/verify", async (request, response, next) => {
     let pendingUser: SupabaseAuthUser;
     let pendingClaims: SupabaseAccessTokenClaims | undefined;
     let factorId: string | undefined = pendingBinding.factorId;
+    let mfaClient: AdminMfaSupabaseClient;
     try {
       pendingUser = await fetchSupabaseAuthUser(accessToken);
       pendingClaims = decodeSupabaseAccessTokenClaims(accessToken);
+      mfaClient = await createAdminMfaSupabaseClient({
+        accessToken,
+        refreshToken,
+      });
       factorId = verifyAdminPendingMfaBindingToken({
         token: factorBinding,
         secret: shareTokenEncryptionSecret ?? "",
@@ -29484,7 +29502,7 @@ app.post("/api/admin/mfa/verify", async (request, response, next) => {
         authSessionId: pendingClaims?.session_id ?? "",
       });
       const authoritativeFactors = factorId
-        ? await listSupabaseMfaFactors(accessToken, pendingUser, {
+        ? await listSupabaseMfaFactors(mfaClient, pendingUser, {
             authoritative: true,
           })
         : [];
@@ -29530,7 +29548,11 @@ app.post("/api/admin/mfa/verify", async (request, response, next) => {
 
     let session: SupabaseAuthSession;
     try {
-      session = await verifyAdminTotpFactor({ accessToken, factorId, code });
+      session = await verifyAdminTotpFactor({
+        client: mfaClient!,
+        factorId,
+        code,
+      });
     } catch (error) {
       if (isRetryableAdminMfaFailure(error)) {
         if (!(await rollbackAdminMfaReservationOrRespond(response, reservation))) {
@@ -29579,7 +29601,7 @@ app.post("/api/admin/mfa/verify", async (request, response, next) => {
       user = await fetchSupabaseAuthUser(session.access_token);
       profile = await readAdminProfileByUserId(user.id);
       verifiedFactor = (
-        await listSupabaseMfaFactors(session.access_token, user, {
+        await listSupabaseMfaFactors(mfaClient!, user, {
           authoritative: true,
         })
       ).find(
