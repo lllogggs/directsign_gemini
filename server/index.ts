@@ -18,6 +18,16 @@ import {
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { fileURLToPath } from "node:url";
+import { isPrivateOrReservedIpAddress } from "./public-ip-policy.js";
+import { isSafeSignaturePng } from "./signature-image-security.js";
+import {
+  isSafeMarketplaceImage,
+  normalizeMarketplaceImage,
+} from "./marketplace-image-security.js";
+import {
+  createContractDocumentHash,
+  hasSameContractDocument,
+} from "./contract-document-security.js";
 import { waitUntil } from "@vercel/functions";
 import {
   extractInstagramDmChallengeEvents,
@@ -62,6 +72,16 @@ import {
 import { isOperationalTestEmail } from "./operational-test-email.js";
 import { sendPlatformVerificationEmail } from "./verification-email.js";
 import { verificationRequestBelongsToInfluencerAccount } from "./verification-ownership.js";
+import {
+  hasExactVerificationEvidenceFile,
+  reconcileVerificationEvidencePersistence,
+  type VerificationEvidenceReconciliationAlertReason,
+} from "./verification-evidence-reconciliation.js";
+import {
+  readPrivateDownloadResponseBodyBounded,
+  setPrivateDownloadHeaders,
+  streamPrivateDownloadBuffer,
+} from "./private-download-stream.js";
 import {
   buildCampaignShareMetadata,
   buildContractShareMetadata,
@@ -192,9 +212,24 @@ import {
 import {
   SIGNATURE_CONSENT_TEXT,
   SIGNATURE_CONSENT_VERSION,
-  SUPPORT_ACCESS_CONSENT_TEXT,
+  SUPPORT_ACCESS_CONSENT_VERSION,
 } from "../src/domain/legalConsent.js";
 import { normalizeSeoPath, staticSeoRoutePaths } from "../src/domain/seo.js";
+import {
+  getPublicPageViewLabel,
+  PUBLIC_PAGE_VIEW_PAGES,
+  type PublicPageViewKey,
+} from "../src/domain/publicPageViews.js";
+import {
+  buildAnalyticsDateKeys,
+  calculateAnalyticsDeltaPercent,
+  formatAnalyticsDateLabel,
+  isAdminAnalyticsRangeDays,
+  type AdminAnalyticsAuthDaily,
+  type AdminAnalyticsAuthSummary,
+  type AdminAnalyticsRangeDays,
+  type AdminAnalyticsResponse,
+} from "../src/domain/adminAnalytics.js";
 import { reserveNaverSearchRequest } from "../scripts/lib/naver-search-budget.mjs";
 import {
   isTerminalSupabaseAccessFailure,
@@ -214,7 +249,6 @@ import {
   hasSameOneToOneContractStorageIdentity,
   isConcurrentOneToOneContractIdentityConflict,
   isEquivalentOneToOneContractWriteRetry,
-  mergeOneToOneContractWriteSet,
   type OneToOneContractStorageIdentity,
 } from "../lib/one-to-one-contract-idempotency.js";
 
@@ -349,6 +383,8 @@ interface SupportAccessRequestRecord {
   status: SupportAccessStatus;
   data_origin?: DataOrigin;
   expires_at: string;
+  consent_version?: string;
+  consent_accepted_at?: string;
   reviewed_by_profile_id?: string;
   reviewed_by_name?: string;
   reviewed_at?: string;
@@ -677,8 +713,14 @@ const influencerFastSessionCookie = "directsign_influencer_fast";
 const advertiserRecentAuthCookie = "directsign_advertiser_recent_auth";
 const influencerRecentAuthCookie = "directsign_influencer_recent_auth";
 const recentAuthMaxAgeSeconds = 60 * 10;
+const passwordResetPendingCookie = "directsign_password_reset_pending";
+const passwordResetPkceMaxAgeSeconds = 60 * 10;
+const passwordResetStateCipherPrefix = "password-reset-state:v1:";
+const passwordResetPendingCipherPrefix = "password-reset-pending:v1:";
 const signedPdfAccessCookie = "yeollock_signed_pdf_access";
 const signedPdfAccessMaxAgeSeconds = 60 * 10;
+const contractShareAccessCookie = "yeollock_contract_share_access";
+const contractShareAccessMaxAgeSeconds = 60 * 30;
 const defaultAdvertiserTargetId =
   process.env.DIRECTSIGN_DEFAULT_ADVERTISER_ID ?? "adv_1";
 const defaultInfluencerTargetId =
@@ -716,7 +758,6 @@ const filterOperationalMarketplaceTestData =
   isProductionRuntime && !demoMode && !allowProductionTestData;
 const signatureConsentVersion = SIGNATURE_CONSENT_VERSION;
 const signatureConsentText = SIGNATURE_CONSENT_TEXT;
-const supportAccessConsentText = SUPPORT_ACCESS_CONSENT_TEXT;
 const configuredProductName =
   process.env.PRODUCT_NAME ?? process.env.VITE_PRODUCT_NAME ?? "연락미";
 const normalizedConfiguredProductName = configuredProductName
@@ -731,7 +772,7 @@ const productName =
     ? "연락미"
     : normalizedConfiguredProductName;
 const signupTermsVersion = "2026-06-02";
-const signupPrivacyPolicyVersion = "2026-08-11.2";
+const signupPrivacyPolicyVersion = "2026-08-13.1";
 const signedPdfFontCandidates = [
   process.env.SIGNED_PDF_FONT_PATH,
   path.join(root, "public", "fonts", "NanumMyeongjo-Regular.ttf"),
@@ -1044,16 +1085,16 @@ app.use((_request, response, next) => {
     response.setHeader(
       cspReportOnly ? "Content-Security-Policy-Report-Only" : "Content-Security-Policy",
       [
-        "default-src 'self'",
+        "default-src 'self' https://*.clarity.ms https://c.bing.com",
         "base-uri 'self'",
         "object-src 'none'",
         "frame-ancestors 'none'",
         "form-action 'self'",
-        "img-src 'self' data: blob: https://*.supabase.co https://*.google-analytics.com https://*.googletagmanager.com https://*.ggpht.com https://*.googleusercontent.com https://*.cdninstagram.com https://*.fbcdn.net https://*.tiktokcdn.com https://*.pstatic.net",
+        "img-src 'self' data: blob: https://*.supabase.co https://*.google-analytics.com https://*.googletagmanager.com https://*.clarity.ms https://c.bing.com https://*.ggpht.com https://*.googleusercontent.com https://*.cdninstagram.com https://*.fbcdn.net https://*.tiktokcdn.com https://*.pstatic.net",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         "font-src 'self' https://fonts.gstatic.com",
-        "script-src 'self' https://*.googletagmanager.com",
-        "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com",
+        "script-src 'self' https://*.googletagmanager.com https://*.clarity.ms https://c.bing.com",
+        "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com https://*.clarity.ms https://c.bing.com",
       ].join("; "),
     );
   }
@@ -1129,7 +1170,6 @@ const clauseStatuses = new Set([
 ]);
 const shareTokenStatuses = new Set(["not_issued", "active", "expired", "revoked"]);
 const pdfStatuses = new Set(["not_ready", "draft_ready", "signed_ready"]);
-const verificationStatuses = new Set(["pending", "approved", "rejected"]);
 const advertiserTrustRiskLevels = new Set(["low", "medium", "high"]);
 const influencerPlatforms = new Set<InfluencerPlatform>([
   "instagram",
@@ -1186,15 +1226,21 @@ const evidenceFileMimeTypes = new Set([
   "image/webp",
 ]);
 const maxVerificationFileSize = 10 * 1024 * 1024;
-const deliverableFileMimeTypes = evidenceFileMimeTypes;
 const maxDeliverableFileSize = maxVerificationFileSize;
-const signatureImageMimeTypes = new Set([
+const maxDeliverablesPerContract = 50;
+const maxDeliverableBytesPerContract = 100 * 1024 * 1024;
+const maxDeliverableBytesPerCreatorPerDay = 250 * 1024 * 1024;
+const maxDeliverableTitleLength = 120;
+const maxDeliverableNoteLength = 2_000;
+const maxDeliverableUrlLength = 2_048;
+const signatureImageMimeTypes = new Set(["image/png"]);
+const maxSignatureImageSize = 1 * 1024 * 1024;
+const marketplaceImageMimeTypes = new Set([
   "image/png",
   "image/jpeg",
   "image/webp",
 ]);
-const maxSignatureImageSize = 1 * 1024 * 1024;
-const marketplaceImageMimeTypes = signatureImageMimeTypes;
+const marketplaceStoredImageMimeTypes = new Set(["image/png"]);
 const maxMarketplaceImageSize = 3 * 1024 * 1024;
 const maxOwnershipCheckBytes = 256 * 1024;
 const deliverableReviewStatuses = new Set<DeliverableReviewStatus>([
@@ -1482,6 +1528,9 @@ interface SupabaseAccessTokenClaims {
   sub?: string;
   session_id?: string;
   aal?: "aal1" | "aal2";
+  aud?: string | string[];
+  role?: string;
+  is_anonymous?: boolean;
   exp?: number;
   iat?: number;
   amr?: Array<{ method?: string; timestamp?: number }>;
@@ -1643,6 +1692,34 @@ interface StoredPrivateFile {
   stored_at: string;
 }
 
+type PrivateFileUploadPurpose =
+  | "advertiser_verification"
+  | "influencer_verification"
+  | "deliverable";
+
+interface DirectsignPrivateFileUploadTicket {
+  ticket_id: string;
+  purpose: PrivateFileUploadPurpose;
+  actor_profile_id: string;
+  resource_id: string;
+  contract_id?: string | null;
+  requirement_id?: string | null;
+  reservation_id?: string | null;
+  bucket: string;
+  object_path: string;
+  content_type: string;
+  byte_size: number;
+  sha256: string;
+  state: "issued" | "finalized" | "cleanup_pending" | "cleaned";
+  finalize_expires_at: string;
+}
+
+interface PrivateFileUploadDescriptor {
+  contentType: string;
+  byteSize: number;
+  sha256: string;
+}
+
 interface SupabaseContractV2Row {
   id: string;
   status: "draft" | "negotiating" | "signing" | "active" | "completed" | "cancelled";
@@ -1789,6 +1866,7 @@ interface SupabaseContractFileRow {
 interface SupabaseSupportAccessRequestRow {
   id: string;
   contract_id: string;
+  contract_uuid?: string | null;
   legacy_contract_id?: string | null;
   requester_profile_id?: string | null;
   requester_role: "advertiser" | "influencer";
@@ -1799,6 +1877,8 @@ interface SupabaseSupportAccessRequestRow {
   status: SupportAccessStatus;
   data_origin?: DataOrigin | null;
   expires_at: string;
+  consent_version?: string | null;
+  consent_accepted_at?: string | null;
   reviewed_by_profile_id?: string | null;
   reviewed_by_name?: string | null;
   reviewed_at?: string | null;
@@ -2113,6 +2193,13 @@ interface FinalizeMarketplaceCampaignRecruitmentRpcRow {
   result_campaign_data?: unknown;
   result_status?: unknown;
   result_not_selected_count?: unknown;
+}
+
+interface TransitionMarketplaceCampaignStatusRpcRow {
+  outcome?: unknown;
+  result_campaign_data?: unknown;
+  result_status?: unknown;
+  result_updated_at?: unknown;
 }
 
 interface ReserveMarketplaceCampaignSelectionRpcRow {
@@ -2499,27 +2586,6 @@ const fetchSupabase = (table: string, query = "", init: SupabaseRequestInit = {}
       ...(init.headers ?? {}),
     },
   });
-
-const fetchSupabaseAsUser = (
-  table: string,
-  accessToken: string,
-  query = "",
-  init: SupabaseRequestInit = {},
-) => {
-  if (!supabaseUrl || !hasText(accessToken)) {
-    throw new Error("Authenticated Supabase REST is not configured");
-  }
-
-  return fetch(`${supabaseUrl}/rest/v1/${table}${query}`, {
-    ...init,
-    cache: "no-store",
-    signal: init.signal ?? createSupabaseTimeoutSignal(),
-    headers: {
-      ...supabaseAuthHeaders(accessToken),
-      ...(init.headers ?? {}),
-    },
-  });
-};
 
 const assertSupabaseOk = async (response: Response, label: string) => {
   if (!response.ok) {
@@ -3017,37 +3083,6 @@ const readDefaultOrganizationForProfile = async (profileId: string) => {
 
   organizationInflight.set(profileId, request);
   return request;
-};
-
-const hasActiveAdvertiserOrganizationMembership = async ({
-  profileId,
-  organizationId,
-}: {
-  profileId: string;
-  organizationId: string;
-}) => {
-  if (!useSupabase) return true;
-
-  const [memberships, organizations] = await Promise.all([
-    readSupabaseRows<{ organization_id: string }>(
-      "organization_members",
-      `?select=organization_id&organization_id=eq.${encodeURIComponent(
-        organizationId,
-      )}&profile_id=eq.${encodeURIComponent(
-        profileId,
-      )}&role=in.(owner,admin,marketer)&limit=1`,
-      "active advertiser organization membership",
-    ),
-    readSupabaseRows<{ id: string }>(
-      "organizations",
-      `?select=id&id=eq.${encodeURIComponent(
-        organizationId,
-      )}&organization_type=eq.advertiser&deleted_at=is.null&limit=1`,
-      "active advertiser organization",
-    ),
-  ]);
-
-  return memberships.length > 0 && organizations.length > 0;
 };
 
 const ensureDefaultOrganizationForAdvertiserProfile = async (
@@ -3602,6 +3637,8 @@ const normalizeSupportAccessRequest = (
   status: row.status,
   data_origin: row.data_origin ?? undefined,
   expires_at: row.expires_at,
+  consent_version: row.consent_version ?? undefined,
+  consent_accepted_at: row.consent_accepted_at ?? undefined,
   reviewed_by_profile_id: row.reviewed_by_profile_id ?? undefined,
   reviewed_by_name: row.reviewed_by_name ?? undefined,
   reviewed_at: row.reviewed_at ?? undefined,
@@ -3800,23 +3837,6 @@ const getActiveSupportAccessForContract = async (
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
 };
 
-const ensureSupportAccessEventStoreAvailable = async () => {
-  if (!useSupabase || allowLocalSupportAccessStore) return;
-
-  try {
-    await readSupabaseRows<Pick<SupabaseSupportAccessEventRow, "id">>(
-      "support_access_events",
-      "?select=id&limit=1",
-      "support access events",
-    );
-  } catch (error) {
-    if (!isMissingSupabaseSupportAccessEventTableError(error)) {
-      throw error;
-    }
-    throw createMissingSupportAccessEventStoreError();
-  }
-};
-
 const appendSupportAccessEventRow = async (
   requestRecord: Pick<SupportAccessRequestRecord, "id" | "contract_id">,
   event: SupportAccessAuditEvent,
@@ -3911,6 +3931,356 @@ const appendSupportAccessAuditEvent = async (
 
   await appendSupportAccessEventRow(updated, auditEvent);
   return updated;
+};
+
+type SupportAccessAtomicOutcome =
+  | "created"
+  | "updated"
+  | "idempotent"
+  | "reconciled"
+  | "active_duplicate"
+  | "not_found"
+  | "version_conflict"
+  | "invalid_transition"
+  | "request_conflict";
+
+interface SupabaseSupportAccessAtomicResult {
+  outcome: SupportAccessAtomicOutcome;
+  request?: SupabaseSupportAccessRequestRow | null;
+  event?: SupabaseSupportAccessEventRow | null;
+}
+
+interface SupportAccessAtomicResult {
+  outcome: SupportAccessAtomicOutcome;
+  request?: SupportAccessRequestRecord;
+  event?: SupportAccessAuditEvent;
+}
+
+const normalizeSupportAccessAtomicResult = (
+  result: SupabaseSupportAccessAtomicResult,
+): SupportAccessAtomicResult => {
+  const event = result.event ? normalizeSupportAccessEvent(result.event) : undefined;
+  const record = result.request
+    ? normalizeSupportAccessRequest(result.request)
+    : undefined;
+  if (record && event) {
+    record.audit_events = [event];
+  }
+  return { outcome: result.outcome, request: record, event };
+};
+
+const readSupportAccessAtomicReconciliation = async (
+  requestId: string,
+  eventId: string,
+) => {
+  const [requestRows, eventRows] = await Promise.all([
+    readSupabaseRows<SupabaseSupportAccessRequestRow>(
+      supportAccessTable,
+      `?select=*&id=eq.${encodeURIComponent(requestId)}&limit=1`,
+      "support access atomic reconciliation request",
+    ),
+    readSupabaseRows<SupabaseSupportAccessEventRow>(
+      "support_access_events",
+      `?select=*&id=eq.${encodeURIComponent(eventId)}&limit=1`,
+      "support access atomic reconciliation event",
+    ),
+  ]);
+  return { request: requestRows[0], event: eventRows[0] };
+};
+
+const enqueueSupportAccessAtomicityAlert = async (input: {
+  operation: "create" | "transition";
+  requestId: string;
+  contractId?: string;
+  dataOrigin?: DataOrigin;
+  error: unknown;
+}) => {
+  if (input.dataOrigin && input.dataOrigin !== "production") return;
+  await enqueueOperationalAlert({
+    kind: "auth_health",
+    action: "provider_degraded",
+    severity: "urgent",
+    subject_type: "support_access_atomicity",
+    subject_id: input.requestId,
+    title: "지원 열람 원자 처리 결과 확인 필요",
+    body: "지원 열람 상태와 감사 이벤트의 RPC 결과를 확정하지 못해 운영 확인이 필요합니다.",
+    mobile_path: "/admin/mobile",
+    dashboard_path: "/admin",
+    dedupe_key: `support_access_atomicity:${input.operation}:${input.requestId}`,
+    decision_reason: operationalErrorLabel(input.error),
+    metadata_json: {
+      operation: input.operation,
+      request_id: input.requestId,
+      contract_id: input.contractId,
+    },
+  });
+};
+
+const createSupportAccessGrantAtomically = async (input: {
+  requestId: string;
+  eventId: string;
+  contractId: string;
+  requesterProfileId: string;
+  requesterRole: "advertiser" | "influencer";
+  requesterName?: string;
+  requesterEmail?: string;
+  reason: string;
+  scope: SupportAccessScope;
+  dataOrigin?: DataOrigin;
+  ip: string;
+  userAgent: string;
+}): Promise<SupportAccessAtomicResult> => {
+  if (!useSupabase) {
+    const duplicate = (await readSupportAccessRequestsFromFile()).find(
+      (record) =>
+        record.contract_id === input.contractId &&
+        record.requester_profile_id === input.requesterProfileId &&
+        record.requester_role === input.requesterRole &&
+        isSupportAccessActive(record),
+    );
+    if (duplicate) return { outcome: "active_duplicate", request: duplicate };
+
+    const now = new Date().toISOString();
+    const event: SupportAccessAuditEvent = {
+      id: input.eventId,
+      action: "created",
+      actor_role: input.requesterRole,
+      actor_profile_id: input.requesterProfileId,
+      actor_name: input.requesterName,
+      description: "계약 당사자가 동의하고 24시간 지원 열람을 허용했습니다.",
+      ip: input.ip,
+      user_agent: input.userAgent,
+      created_at: now,
+    };
+    const record = await insertSupportAccessRequest({
+      id: input.requestId,
+      contract_id: input.contractId,
+      legacy_contract_id: input.contractId,
+      requester_profile_id: input.requesterProfileId,
+      requester_role: input.requesterRole,
+      requester_name: input.requesterName,
+      requester_email: input.requesterEmail,
+      reason: input.reason,
+      scope: input.scope,
+      status: "active",
+      data_origin: input.dataOrigin,
+      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      consent_version: SUPPORT_ACCESS_CONSENT_VERSION,
+      consent_accepted_at: now,
+      audit_events: [event],
+      created_at: now,
+      updated_at: now,
+    });
+    return { outcome: "created", request: record, event };
+  }
+
+  try {
+    const result = await callSupabaseRpc<SupabaseSupportAccessAtomicResult>(
+      "create_support_access_grant_atomically",
+      {
+        p_request_id: input.requestId,
+        p_contract_id: input.contractId,
+        p_requester_profile_id: input.requesterProfileId,
+        p_requester_role: input.requesterRole,
+        p_reason: input.reason,
+        p_scope: input.scope,
+        p_data_origin: input.dataOrigin ?? null,
+        p_consent_version: SUPPORT_ACCESS_CONSENT_VERSION,
+        p_event_id: input.eventId,
+        p_ip: input.ip,
+        p_user_agent: input.userAgent,
+      },
+      "atomic support access grant",
+    );
+    return normalizeSupportAccessAtomicResult(result);
+  } catch (error) {
+    let reconciled:
+      | Awaited<ReturnType<typeof readSupportAccessAtomicReconciliation>>
+      | undefined;
+    try {
+      reconciled = await readSupportAccessAtomicReconciliation(
+        input.requestId,
+        input.eventId,
+      );
+    } catch {
+      await enqueueSupportAccessAtomicityAlert({
+        operation: "create",
+        requestId: input.requestId,
+        contractId: input.contractId,
+        dataOrigin: input.dataOrigin,
+        error,
+      }).catch(() => undefined);
+      throw error;
+    }
+
+    const committed = Boolean(
+      reconciled.request &&
+        reconciled.event &&
+        reconciled.request.contract_id === input.contractId &&
+        reconciled.request.contract_uuid === input.contractId &&
+        reconciled.request.legacy_contract_id === input.contractId &&
+        reconciled.request.requester_profile_id === input.requesterProfileId &&
+        reconciled.request.requester_role === input.requesterRole &&
+        reconciled.request.reason === input.reason.trim() &&
+        reconciled.request.scope === input.scope &&
+        reconciled.request.status === "active" &&
+        reconciled.request.consent_version === SUPPORT_ACCESS_CONSENT_VERSION &&
+        reconciled.event.support_access_request_id === input.requestId &&
+        reconciled.event.contract_id === input.contractId &&
+        reconciled.event.action === "created" &&
+        reconciled.event.actor_role === input.requesterRole &&
+        reconciled.event.actor_profile_id === input.requesterProfileId,
+    );
+    if (committed) {
+      return normalizeSupportAccessAtomicResult({
+        outcome: "reconciled",
+        request: reconciled.request,
+        event: reconciled.event,
+      });
+    }
+    if (!reconciled.request && !reconciled.event) throw error;
+
+    await enqueueSupportAccessAtomicityAlert({
+      operation: "create",
+      requestId: input.requestId,
+      contractId: input.contractId,
+      dataOrigin: input.dataOrigin,
+      error,
+    }).catch(() => undefined);
+    return {
+      outcome: "request_conflict",
+      request: reconciled.request
+        ? normalizeSupportAccessRequest(reconciled.request)
+        : undefined,
+    };
+  }
+};
+
+const transitionSupportAccessStatusAtomically = async (input: {
+  record: SupportAccessRequestRecord;
+  targetStatus: "closed" | "revoked";
+  actorProfileId: string;
+  actorName: string;
+  adminAuthSessionId: string;
+  eventId: string;
+  ip: string;
+  userAgent: string;
+}): Promise<SupportAccessAtomicResult> => {
+  if (!useSupabase) {
+    if (input.record.status === input.targetStatus) {
+      return { outcome: "idempotent", request: input.record };
+    }
+    if (input.record.status !== "active") {
+      return { outcome: "invalid_transition", request: input.record };
+    }
+    const now = new Date().toISOString();
+    const event: SupportAccessAuditEvent = {
+      id: input.eventId,
+      action: input.targetStatus,
+      actor_role: "admin",
+      actor_profile_id: input.actorProfileId,
+      actor_name: input.actorName,
+      description:
+        input.targetStatus === "closed"
+          ? "운영자가 지원 열람을 종료했습니다."
+          : "운영자가 지원 열람을 회수했습니다.",
+      ip: input.ip,
+      user_agent: input.userAgent,
+      created_at: now,
+    };
+    const updated = await updateSupportAccessRequest({
+      ...input.record,
+      status: input.targetStatus,
+      reviewed_by_profile_id: input.actorProfileId,
+      reviewed_by_name: input.actorName,
+      reviewed_at: now,
+      audit_events: [...(input.record.audit_events ?? []), event],
+    });
+    return { outcome: "updated", request: updated, event };
+  }
+
+  try {
+    const result = await callSupabaseRpc<SupabaseSupportAccessAtomicResult>(
+      "transition_support_access_status_atomically",
+      {
+        p_request_id: input.record.id,
+        p_expected_status: input.record.status,
+        p_expected_updated_at: input.record.updated_at,
+        p_target_status: input.targetStatus,
+        p_actor_profile_id: input.actorProfileId,
+        p_admin_auth_session_id: input.adminAuthSessionId,
+        p_event_id: input.eventId,
+        p_ip: input.ip,
+        p_user_agent: input.userAgent,
+      },
+      "atomic support access transition",
+    );
+    return normalizeSupportAccessAtomicResult(result);
+  } catch (error) {
+    let reconciled:
+      | Awaited<ReturnType<typeof readSupportAccessAtomicReconciliation>>
+      | undefined;
+    try {
+      reconciled = await readSupportAccessAtomicReconciliation(
+        input.record.id,
+        input.eventId,
+      );
+    } catch {
+      await enqueueSupportAccessAtomicityAlert({
+        operation: "transition",
+        requestId: input.record.id,
+        contractId: input.record.contract_id,
+        dataOrigin: input.record.data_origin,
+        error,
+      }).catch(() => undefined);
+      throw error;
+    }
+
+    const eventCommitted = Boolean(
+      reconciled.request &&
+        reconciled.event &&
+        reconciled.request.status === input.targetStatus &&
+        reconciled.event.support_access_request_id === input.record.id &&
+        reconciled.event.contract_id === input.record.contract_id &&
+        reconciled.event.action === input.targetStatus &&
+        reconciled.event.actor_role === "admin" &&
+        reconciled.event.actor_profile_id === input.actorProfileId,
+    );
+    if (eventCommitted) {
+      return normalizeSupportAccessAtomicResult({
+        outcome: "reconciled",
+        request: reconciled.request,
+        event: reconciled.event,
+      });
+    }
+    if (reconciled.request?.status === input.targetStatus && !reconciled.event) {
+      return normalizeSupportAccessAtomicResult({
+        outcome: "idempotent",
+        request: reconciled.request,
+      });
+    }
+    if (!reconciled.request && !reconciled.event) throw error;
+    if (reconciled.request && reconciled.request.status !== "active") {
+      return {
+        outcome: "invalid_transition",
+        request: normalizeSupportAccessRequest(reconciled.request),
+      };
+    }
+
+    await enqueueSupportAccessAtomicityAlert({
+      operation: "transition",
+      requestId: input.record.id,
+      contractId: input.record.contract_id,
+      dataOrigin: input.record.data_origin,
+      error,
+    }).catch(() => undefined);
+    return {
+      outcome: "request_conflict",
+      request: reconciled.request
+        ? normalizeSupportAccessRequest(reconciled.request)
+        : undefined,
+    };
+  }
 };
 
 const supportTicketTable = "operational_support_tickets";
@@ -5309,6 +5679,23 @@ const recentAuthCookieOptions = (maxAgeSeconds = recentAuthMaxAgeSeconds) =>
     isPreview ? "Secure" : "",
   ].filter(Boolean).join("; ");
 
+const passwordResetPendingCookieOptions = (
+  maxAgeSeconds = passwordResetPkceMaxAgeSeconds,
+) =>
+  [
+    "HttpOnly",
+    "SameSite=Strict",
+    "Path=/api/auth/password-reset",
+    `Max-Age=${maxAgeSeconds}`,
+    isPreview ? "Secure" : "",
+  ].filter(Boolean).join("; ");
+
+const clearPasswordResetPendingCookie = (response: express.Response) => {
+  appendResponseCookies(response, [
+    `${passwordResetPendingCookie}=; ${passwordResetPendingCookieOptions(0)}`,
+  ]);
+};
+
 const getRecentAuthCookieName = (role: "advertiser" | "influencer") =>
   role === "advertiser"
     ? advertiserRecentAuthCookie
@@ -5533,7 +5920,7 @@ const setAdvertiserSessionCookies = (
 };
 
 const clearAdvertiserSessionCookies = (response: express.Response) => {
-  response.setHeader("Set-Cookie", [
+  appendResponseCookies(response, [
     `${advertiserAccessCookie}=; ${clearAdvertiserCookieOptions()}`,
     `${advertiserRefreshCookie}=; ${clearAdvertiserCookieOptions()}`,
     `${advertiserFastSessionCookie}=; ${clearAdvertiserCookieOptions()}`,
@@ -5590,7 +5977,7 @@ const setInfluencerSessionCookies = (
 };
 
 const clearInfluencerSessionCookies = (response: express.Response) => {
-  response.setHeader("Set-Cookie", [
+  appendResponseCookies(response, [
     `${influencerAccessCookie}=; ${clearInfluencerCookieOptions()}`,
     `${influencerRefreshCookie}=; ${clearInfluencerCookieOptions()}`,
     `${influencerFastSessionCookie}=; ${clearInfluencerCookieOptions()}`,
@@ -5951,6 +6338,27 @@ const finalizeAdminMfaReservationOrRespond = async (
   }
 };
 
+const settleAdminLoginReservation = async (
+  response: express.Response,
+  reservation: AdminMfaRateLimitReservation,
+  outcome: "failure" | "rollback",
+) => {
+  try {
+    if (outcome === "failure") {
+      await finalizeAdminMfaRateLimitReservation(reservation.id);
+    } else {
+      await rollbackAdminMfaRateLimitReservation(reservation.id);
+    }
+    return true;
+  } catch (error) {
+    if (error instanceof DistributedRateLimitUnavailableError) {
+      sendRetryableAdminLoginLimiterUnavailable(response);
+      return false;
+    }
+    throw error;
+  }
+};
+
 const getPublicAuthRateLimitKeys = (
   request: express.Request,
   action: string,
@@ -5967,6 +6375,10 @@ const getPublicAuthRateLimitKeys = (
 
   if (hasText(normalizedEmail)) {
     keys.push({
+      key: `public-auth:${action}:email:${sha256Hex(normalizedEmail)}`,
+      maxAttempts: publicAuthEmailMaxAttempts,
+    });
+    keys.push({
       key: `public-auth:${action}:ip-email:${clientIp}:${normalizedEmail}`,
       maxAttempts: publicAuthEmailMaxAttempts,
     });
@@ -5979,6 +6391,7 @@ const consumePublicAuthRateLimit = async (
   request: express.Request,
   action: string,
   email: unknown,
+  options: { requireDistributed?: boolean } = {},
 ) => {
   const limits = getPublicAuthRateLimitKeys(request, action, email);
   for (const limit of limits) {
@@ -5986,6 +6399,7 @@ const consumePublicAuthRateLimit = async (
       limit.key,
       limit.maxAttempts,
       publicAuthWindowMs,
+      { requireDistributed: options.requireDistributed === true },
     );
     if (result.blocked) return result;
   }
@@ -6026,6 +6440,7 @@ const consumeSensitiveEndpointRateLimit = async (
   request: express.Request,
   action: string,
   subject?: unknown,
+  options: { trustedSubject?: boolean } = {},
 ) => {
   const clientIp = getClientIp(request);
   const limits = [
@@ -6038,7 +6453,9 @@ const consumeSensitiveEndpointRateLimit = async (
 
   if (hasText(normalizedSubject)) {
     limits.push({
-      key: `sensitive:${action}:subject:${normalizedSubject}`,
+      key: options.trustedSubject
+        ? `sensitive:${action}:subject:${normalizedSubject}`
+        : `sensitive:${action}:request:${clientIp}:${normalizedSubject}`,
       maxAttempts: sensitiveEndpointSubjectMaxAttempts,
     });
   }
@@ -6052,6 +6469,227 @@ const consumeSensitiveEndpointRateLimit = async (
     if (result.blocked) return result;
   }
   return { blocked: false };
+};
+
+const consumeSensitiveEndpointSubjectRateLimit = async (
+  action: string,
+  subject: unknown,
+) => {
+  const normalizedSubject = normalizeRateLimitSubject(subject);
+  if (!hasText(normalizedSubject)) return { blocked: true };
+  return consumeRateLimitBucket(
+    `sensitive:${action}:subject:${normalizedSubject}`,
+    sensitiveEndpointSubjectMaxAttempts,
+    sensitiveEndpointWindowMs,
+  );
+};
+
+const contractShareCookieOptions = (
+  contractId: string,
+  maxAgeSeconds = contractShareAccessMaxAgeSeconds,
+) =>
+  [
+    "HttpOnly",
+    "SameSite=Strict",
+    `Path=/api/contracts/${encodeURIComponent(contractId)}`,
+    `Max-Age=${Math.max(0, Math.floor(maxAgeSeconds))}`,
+    isPreview ? "Secure" : "",
+  ]
+    .filter(Boolean)
+    .join("; ");
+
+const getActiveContractShareToken = (contract: Contract) => {
+  const token = contract.evidence?.share_token;
+  if (
+    contract.evidence?.share_token_status !== "active" ||
+    !hasText(token)
+  ) {
+    return undefined;
+  }
+
+  const expiresAt = contract.evidence?.share_token_expires_at
+    ? new Date(contract.evidence.share_token_expires_at).getTime()
+    : undefined;
+  if (
+    typeof expiresAt === "number" &&
+    (!Number.isFinite(expiresAt) || expiresAt <= Date.now())
+  ) {
+    return undefined;
+  }
+
+  return { token, expiresAt };
+};
+
+const createContractShareAccessToken = (contract: Contract) => {
+  const activeShare = getActiveContractShareToken(contract);
+  if (!shareTokenEncryptionSecret || !activeShare) return undefined;
+
+  const expiresAt = Math.min(
+    Date.now() + contractShareAccessMaxAgeSeconds * 1000,
+    activeShare.expiresAt ?? Number.POSITIVE_INFINITY,
+  );
+  const payload = Buffer.from(
+    JSON.stringify({
+      contract_id: contract.id,
+      share_token_hash: createHash("sha256")
+        .update(activeShare.token)
+        .digest("hex"),
+      expires_at: expiresAt,
+      nonce: randomBytes(16).toString("hex"),
+    }),
+    "utf8",
+  ).toString("base64url");
+  const signature = createHmac("sha256", shareTokenEncryptionSecret)
+    .update(payload)
+    .digest("hex");
+
+  return {
+    token: `${payload}.${signature}`,
+    maxAgeSeconds: Math.max(1, Math.floor((expiresAt - Date.now()) / 1000)),
+  };
+};
+
+const verifyContractShareAccessToken = (
+  token: string | undefined,
+  contract: Contract,
+) => {
+  const activeShare = getActiveContractShareToken(contract);
+  if (!shareTokenEncryptionSecret || !token || !activeShare) return false;
+
+  const [payload, signature] = token.split(".");
+  if (!payload || !signature) return false;
+  const expectedSignature = createHmac("sha256", shareTokenEncryptionSecret)
+    .update(payload)
+    .digest("hex");
+  if (!safeEqual(signature, expectedSignature)) return false;
+
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(payload, "base64url").toString("utf8"),
+    ) as {
+      contract_id?: string;
+      share_token_hash?: string;
+      expires_at?: number;
+    };
+    const currentTokenHash = createHash("sha256")
+      .update(activeShare.token)
+      .digest("hex");
+
+    return (
+      parsed.contract_id === contract.id &&
+      typeof parsed.share_token_hash === "string" &&
+      safeEqual(parsed.share_token_hash, currentTokenHash) &&
+      typeof parsed.expires_at === "number" &&
+      parsed.expires_at >= Date.now()
+    );
+  } catch {
+    return false;
+  }
+};
+
+const reserveAdminLoginRateLimit = async (
+  request: express.Request,
+  email: string,
+): Promise<AdminMfaRateLimitReservation> => {
+  if (!useSupabase) throw new DistributedRateLimitUnavailableError();
+  const ip = getClientIp(request);
+  const accountKey = `admin-login:account:${sha256Hex(email)}`;
+  const pairKey = `admin-login:pair:${sha256Hex(email)}:${sha256Hex(ip)}`;
+  const ipKey = `admin-login:ip:${sha256Hex(ip)}`;
+  const keys = [accountKey, pairKey, ipKey];
+  const id = randomUUID();
+  try {
+    const reservationResponse = await fetchSupabase(
+      "rpc/reserve_admin_mfa_rate_limit",
+      "",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          p_reservation_id: id,
+          p_user_bucket_key: sha256Hex(`rate-limit:${accountKey}`),
+          p_factor_bucket_key: sha256Hex(`rate-limit:${pairKey}`),
+          p_ip_bucket_key: sha256Hex(`rate-limit:${ipKey}`),
+          p_max_attempts: adminLoginMaxFailures,
+          p_window_seconds: Math.max(
+            1,
+            Math.ceil(Math.max(adminLoginWindowMs, adminLoginLockMs) / 1000),
+          ),
+          p_reservation_ttl_seconds: 120,
+        }),
+      },
+    );
+    await assertSupabaseOk(
+      reservationResponse,
+      "Supabase admin login reservation",
+    );
+    const payload = (await reservationResponse.json()) as
+      | Array<{
+          blocked?: boolean;
+          retry_after_seconds?: number;
+          reserved?: boolean;
+        }>
+      | {
+          blocked?: boolean;
+          retry_after_seconds?: number;
+          reserved?: boolean;
+        };
+    const result = Array.isArray(payload) ? payload[0] : payload;
+    if (
+      !result ||
+      typeof result.blocked !== "boolean" ||
+      typeof result.reserved !== "boolean" ||
+      result.blocked === result.reserved
+    ) {
+      throw new Error("Supabase admin login reservation returned an invalid result");
+    }
+    return {
+      id,
+      keys,
+      blocked: result.blocked,
+      retryAfterSeconds: Math.max(
+        0,
+        Number(result.retry_after_seconds) || 0,
+      ),
+    };
+  } catch (error) {
+    throw new DistributedRateLimitUnavailableError(error);
+  }
+};
+
+const sendRetryableAdminLoginLimiterUnavailable = (
+  response: express.Response,
+) => {
+  response.setHeader("Retry-After", "2");
+  response.status(503).json({
+    error: "운영자 로그인 보호 서비스를 잠시 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+    retryable: true,
+  });
+};
+
+const hasContractShareCookieAccess = (
+  request: express.Request,
+  contract: Contract,
+) =>
+  verifyContractShareAccessToken(
+    parseCookies(request.header("cookie")).get(contractShareAccessCookie),
+    contract,
+  );
+
+const setContractShareAccessCookie = (
+  response: express.Response,
+  contract: Contract,
+) => {
+  const access = createContractShareAccessToken(contract);
+  if (!access) return false;
+
+  response.append(
+    "Set-Cookie",
+    `${contractShareAccessCookie}=${encodeURIComponent(access.token)}; ${contractShareCookieOptions(
+      contract.id,
+      access.maxAgeSeconds,
+    )}`,
+  );
+  return true;
 };
 
 const sendSensitiveRateLimitResponse = (
@@ -6243,7 +6881,19 @@ const createSupabasePasswordSession = async (
     );
   }
 
-  return (await response.json()) as SupabaseAuthSession;
+  const session = (await response.json()) as SupabaseAuthSession;
+  if (
+    !isSupabaseAuthUser(session.user) ||
+    !(await requireAuthoritativeSupabaseSession(session.access_token, session.user.id))
+  ) {
+    await revokeSupabaseSession(session.access_token).catch(() => undefined);
+    throw new SupabasePasswordGrantError(
+      "Supabase session is no longer authorized",
+      401,
+      "session_not_found",
+    );
+  }
+  return session;
 };
 
 const isSupabaseAuthUser = (value: unknown): value is SupabaseAuthUser =>
@@ -6338,9 +6988,11 @@ const createSupabaseSignupUser = async ({
 const requestSupabasePasswordRecovery = async ({
   email,
   redirectTo,
+  codeChallenge,
 }: {
   email: string;
   redirectTo: string;
+  codeChallenge: string;
 }) => {
   const url = new URL(supabaseAuthUrl("/recover"));
   url.searchParams.set("redirect_to", redirectTo);
@@ -6348,7 +7000,11 @@ const requestSupabasePasswordRecovery = async ({
   const response = await fetch(url.toString(), {
     method: "POST",
     headers: supabaseAuthHeaders(),
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({
+      email,
+      code_challenge: codeChallenge,
+      code_challenge_method: "s256",
+    }),
   });
 
   if (!response.ok) {
@@ -6366,13 +7022,45 @@ const updateSupabasePasswordWithRecoveryToken = async ({
   const response = await fetch(supabaseAuthUrl("/user"), {
     method: "PUT",
     headers: supabaseAuthHeaders(accessToken),
+    signal: createSupabaseTimeoutSignal(),
     body: JSON.stringify({ password }),
   });
 
   if (!response.ok) {
-    throw new Error(await parseSupabaseError(response));
+    const error = await parseSupabaseAuthError(response);
+    throw new SupabaseAuthUserVerificationError(
+      error.message,
+      response.status,
+      error.code,
+    );
   }
 };
+
+type PasswordResetBarrierResult = {
+  outcome?: string;
+  password_update_uncertain?: boolean;
+  generation?: number;
+};
+
+const callPasswordResetBarrierRpc = (
+  action: "begin" | "mark_uncertain" | "cancel" | "finish",
+  input: { userId: string; resetId: string; recoverySessionId: string },
+) =>
+  callSupabaseRpc<PasswordResetBarrierResult>(
+    action === "begin"
+      ? "begin_directsign_password_reset"
+      : action === "mark_uncertain"
+        ? "mark_directsign_password_reset_uncertain"
+        : action === "cancel"
+          ? "cancel_directsign_password_reset"
+          : "finish_directsign_password_reset",
+    {
+      p_user_id: input.userId,
+      p_reset_id: input.resetId,
+      p_recovery_session_id: input.recoverySessionId,
+    },
+    `${action} password reset barrier`,
+  );
 
 const getLoginFailureMessage = (error: unknown, fallback: string) => {
   const message = error instanceof Error ? error.message : "";
@@ -6655,7 +7343,7 @@ const revokeSupabaseSessionsGlobally = async (
     headers: supabaseAuthHeaders(accessToken),
     signal: createSupabaseTimeoutSignal(),
   });
-  if (!response.ok && response.status !== 401 && response.status !== 404) {
+  if (!response.ok && response.status !== 401) {
     throw new Error(`Supabase global logout failed (${response.status})`);
   }
 };
@@ -6926,6 +7614,15 @@ const authenticateInfluencerRequest = async (
     return undefined;
   }
 
+  if (
+    accessToken &&
+    !(await requireAuthoritativeSupabaseSession(accessToken))
+  ) {
+    forgetRoleSessionRequestCaches(request, "influencer", [accessToken, refreshToken]);
+    if (response) clearInfluencerSessionCookies(response);
+    return undefined;
+  }
+
   if (accessToken) {
     const cachedUser = readRecentAuthSession(accessToken);
     if (cachedUser) {
@@ -6996,6 +7693,21 @@ const authenticateInfluencerRequest = async (
   if (refreshToken) {
     try {
       const session = await refreshSupabaseSession(refreshToken);
+      if (
+        !(await requireAuthoritativeSupabaseSession(
+          session.access_token,
+          session.user.id,
+        ))
+      ) {
+        forgetRoleSessionRequestCaches(
+          request,
+          "influencer",
+          [session.access_token, session.refresh_token ?? refreshToken],
+          session.user.id,
+        );
+        if (response) clearInfluencerSessionCookies(response);
+        return undefined;
+      }
       if (
         await rejectPrivacyErasedBrowserSession({
           request,
@@ -7080,6 +7792,15 @@ const authenticateAdvertiserRequest = async (
     return undefined;
   }
 
+  if (
+    accessToken &&
+    !(await requireAuthoritativeSupabaseSession(accessToken))
+  ) {
+    forgetRoleSessionRequestCaches(request, "advertiser", [accessToken, refreshToken]);
+    if (response) clearAdvertiserSessionCookies(response);
+    return undefined;
+  }
+
   if (accessToken) {
     const cachedUser = readRecentAuthSession(accessToken);
     if (cachedUser) {
@@ -7150,6 +7871,21 @@ const authenticateAdvertiserRequest = async (
   if (refreshToken) {
     try {
       const session = await refreshSupabaseSession(refreshToken);
+      if (
+        !(await requireAuthoritativeSupabaseSession(
+          session.access_token,
+          session.user.id,
+        ))
+      ) {
+        forgetRoleSessionRequestCaches(
+          request,
+          "advertiser",
+          [session.access_token, session.refresh_token ?? refreshToken],
+          session.user.id,
+        );
+        if (response) clearAdvertiserSessionCookies(response);
+        return undefined;
+      }
       if (
         await rejectPrivacyErasedBrowserSession({
           request,
@@ -7662,28 +8398,30 @@ const registerAdminOperatorSession = async (
   const absoluteExpiresAt = new Date(
     now.getTime() + adminSessionMaxAgeSeconds * 1000,
   ).toISOString();
-  const response = await fetchSupabase(
-    "admin_operator_sessions",
-    "?on_conflict=auth_session_id",
+  const result = await callSupabaseRpc<{
+    outcome?: string;
+    authenticated_at?: string;
+    absolute_expires_at?: string;
+  }>(
+    "register_directsign_admin_operator_session",
     {
-      method: "POST",
-      headers: { Prefer: "resolution=merge-duplicates,return=representation" },
-      body: JSON.stringify([
-        {
-          auth_session_id: claims.session_id,
-          operator_profile_id: profile.id,
-          aal: "aal2",
-          authenticated_at: authenticatedAt,
-          last_seen_at: now.toISOString(),
-          absolute_expires_at: absoluteExpiresAt,
-          revoked_at: null,
-          revoke_reason: null,
-        },
-      ]),
+      p_user_id: profile.id,
+      p_profile_id: profile.id,
+      p_auth_session_id: claims.session_id,
+      p_authenticated_at: authenticatedAt,
+      p_absolute_expires_at: absoluteExpiresAt,
     },
+    "admin operator session registration",
   );
-  await assertSupabaseOk(response, "Supabase admin operator session registration");
-  return { authenticatedAt, absoluteExpiresAt };
+  if (result.outcome !== "registered") {
+    throw new AuthSessionTemporarilyUnavailableError(
+      new Error("Admin operator session was blocked by the security epoch"),
+    );
+  }
+  return {
+    authenticatedAt: result.authenticated_at ?? authenticatedAt,
+    absoluteExpiresAt: result.absolute_expires_at ?? absoluteExpiresAt,
+  };
 };
 
 const revokeAdminOperatorSession = async (
@@ -7718,6 +8456,10 @@ const authenticateAdminRequest = async (
   let user: SupabaseAuthUser | undefined;
 
   if (accessToken) {
+    if (!(await requireAuthoritativeSupabaseSession(accessToken))) {
+      if (response) clearAdminSessionCookies(response);
+      return undefined;
+    }
     try {
       user = await fetchSupabaseAuthUser(accessToken);
     } catch (error) {
@@ -7737,6 +8479,12 @@ const authenticateAdminRequest = async (
       });
       accessToken = refreshedSession.access_token;
       user = refreshedSession.user;
+      if (
+        !(await requireAuthoritativeSupabaseSession(accessToken, user.id))
+      ) {
+        if (response) clearAdminSessionCookies(response);
+        return undefined;
+      }
       if (response) {
         setAdminSessionCookies(
           response,
@@ -10105,54 +10853,8 @@ const normalizeChallengeCode = (value: unknown) =>
 const normalizeHostname = (hostname: string) =>
   hostname.toLowerCase().replace(/^\[/, "").replace(/\]$/, "").replace(/\.$/, "");
 
-const isPrivateIpAddress = (address: string) => {
-  const normalized = normalizeHostname(address);
-  const mappedIpv4 = normalized.startsWith("::ffff:")
-    ? normalized.slice("::ffff:".length)
-    : normalized;
-  const version = isIP(mappedIpv4);
-
-  if (version === 4) {
-    const parts = mappedIpv4.split(".").map((part) => Number(part));
-    if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part))) {
-      return true;
-    }
-
-    const [first, second, third, fourth] = parts;
-    const privateOrReserved =
-      first === 0 ||
-      first === 10 ||
-      first === 127 ||
-      (first === 100 && second >= 64 && second <= 127) ||
-      (first === 169 && second === 254) ||
-      (first === 172 && second >= 16 && second <= 31) ||
-      (first === 192 && second === 168) ||
-      (first === 192 && second === 0 && third === 0) ||
-      (first === 192 && second === 0 && third === 2) ||
-      (first === 198 && (second === 18 || second === 19)) ||
-      (first === 198 && second === 51 && third === 100) ||
-      (first === 203 && second === 0 && third === 113) ||
-      first >= 224 ||
-      (first === 255 && second === 255 && third === 255 && fourth === 255);
-
-    return privateOrReserved;
-  }
-
-  if (version === 6) {
-    const firstSegment = Number.parseInt(normalized.split(":")[0] || "0", 16);
-    return (
-      normalized === "::" ||
-      normalized === "::1" ||
-      normalized.startsWith("fc") ||
-      normalized.startsWith("fd") ||
-      (firstSegment & 0xffc0) === 0xfe80 ||
-      (firstSegment & 0xff00) === 0xff00 ||
-      normalized.startsWith("2001:db8:")
-    );
-  }
-
-  return false;
-};
+const isPrivateIpAddress = (address: string) =>
+  isPrivateOrReservedIpAddress(normalizeHostname(address));
 
 const isBlockedExternalHostname = (hostname: string) => {
   const normalized = normalizeHostname(hostname);
@@ -11909,23 +12611,6 @@ const parseEvidenceFile = (value: unknown) => {
   };
 };
 
-const validateEvidenceFile = (
-  file: ReturnType<typeof parseEvidenceFile> | undefined,
-) => {
-  if (!file) return "Verification evidence file is required";
-  if (!evidenceFileMimeTypes.has(file.type)) {
-    return "Only PDF, PNG, JPG, or WebP files are allowed";
-  }
-  if (file.size <= 0 || file.size > maxVerificationFileSize) {
-    return "Verification evidence file must be 10MB or smaller";
-  }
-  if (!file.data_url.startsWith("data:")) {
-    return "Verification evidence file is invalid";
-  }
-
-  return undefined;
-};
-
 const dataUrlToBuffer = (dataUrl: string) => {
   const match = dataUrl.match(/^data:([^;,]+)(;base64)?,([\s\S]*)$/);
   if (!match) {
@@ -12199,39 +12884,6 @@ const storePrivateBuffer = async ({
   };
 };
 
-const storeEvidenceFile = async ({
-  requestId,
-  ownerId,
-  area,
-  file,
-}: {
-  requestId: string;
-  ownerId: string;
-  area: string;
-  file: NonNullable<ReturnType<typeof parseEvidenceFile>>;
-}) => {
-  const { contentType, buffer } = dataUrlToBuffer(file.data_url);
-
-  if (
-    contentType !== file.type ||
-    !assertDeclaredMimeMatchesContent(contentType, buffer, evidenceFileMimeTypes)
-  ) {
-    throw new Error("Evidence file content type is invalid");
-  }
-  if (buffer.byteLength <= 0 || buffer.byteLength > maxVerificationFileSize) {
-    throw new Error("Evidence file size is invalid");
-  }
-
-  return storePrivateBuffer({
-    area,
-    ownerId,
-    fileId: requestId,
-    fileName: file.name,
-    contentType,
-    buffer,
-  });
-};
-
 const validateMarketplaceImageFile = (
   file: ReturnType<typeof parseEvidenceFile> | undefined,
 ) => {
@@ -12370,8 +13022,8 @@ const ensureMarketplacePublicStorageBucket = async (allowCreate = true) => {
       Number.isFinite(fileSizeLimit) &&
       fileSizeLimit > 0 &&
       fileSizeLimit === maxMarketplaceImageSize &&
-      allowedMimeTypes.size === marketplaceImageMimeTypes.size &&
-      Array.from(marketplaceImageMimeTypes).every((type) =>
+      allowedMimeTypes.size === marketplaceStoredImageMimeTypes.size &&
+      Array.from(marketplaceStoredImageMimeTypes).every((type) =>
         allowedMimeTypes.has(type),
       );
     if (!bucketIsPublicAndImageOnly) {
@@ -12404,7 +13056,7 @@ const ensureMarketplacePublicStorageBucket = async (allowCreate = true) => {
       name: marketplacePublicStorageBucket,
       public: true,
       file_size_limit: maxMarketplaceImageSize,
-      allowed_mime_types: Array.from(marketplaceImageMimeTypes),
+      allowed_mime_types: Array.from(marketplaceStoredImageMimeTypes),
     }),
   });
 
@@ -12459,14 +13111,19 @@ const storeMarketplacePublicImage = async ({
 }) => {
   const { contentType, buffer } = dataUrlToBuffer(file.data_url);
 
+  if (buffer.byteLength <= 0 || buffer.byteLength > maxMarketplaceImageSize) {
+    throw new Error("Image file size is invalid");
+  }
   if (
     contentType !== file.type ||
-    !assertDeclaredMimeMatchesContent(contentType, buffer, marketplaceImageMimeTypes)
+    !assertDeclaredMimeMatchesContent(contentType, buffer, marketplaceImageMimeTypes) ||
+    !isSafeMarketplaceImage(buffer, contentType)
   ) {
     throw new Error("Image file content type is invalid");
   }
-  if (buffer.byteLength <= 0 || buffer.byteLength > maxMarketplaceImageSize) {
-    throw new Error("Image file size is invalid");
+  const normalizedImage = await normalizeMarketplaceImage(buffer, contentType);
+  if (normalizedImage.buffer.byteLength > maxMarketplaceImageSize) {
+    throw new Error("Normalized image file is larger than 3MB");
   }
 
   const objectPath = buildMarketplacePublicStoragePath({
@@ -12474,15 +13131,15 @@ const storeMarketplacePublicImage = async ({
     ownerId,
     fileId: randomUUID(),
     fileName: file.name,
-    mimeType: contentType,
+    mimeType: normalizedImage.mimeType,
   });
 
   if (useSupabase) {
     try {
       await uploadSupabaseMarketplacePublicImage({
         objectPath,
-        contentType,
-        buffer,
+        contentType: normalizedImage.mimeType,
+        buffer: normalizedImage.buffer,
       });
       const publicUrl = marketplacePublicObjectUrl(objectPath);
       if (publicUrl) return publicUrl;
@@ -12508,7 +13165,7 @@ const storeMarketplacePublicImage = async ({
   }
 
   await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-  await fs.writeFile(absolutePath, buffer);
+  await fs.writeFile(absolutePath, normalizedImage.buffer);
 
   return `/marketplace-assets/${objectPath
     .split("/")
@@ -12535,8 +13192,25 @@ const readStoredPrivateFile = async (storedFile: StoredPrivateFile) => {
     if (!response.ok) {
       throw new Error(`Supabase storage download failed (${response.status})`);
     }
-
-    return Buffer.from(await response.arrayBuffer());
+    const declaredLength = Number(response.headers.get("content-length"));
+    if (
+      !Number.isSafeInteger(storedFile.byte_size) ||
+      storedFile.byte_size < 1 ||
+      storedFile.byte_size > maxVerificationFileSize ||
+      (Number.isFinite(declaredLength) &&
+        declaredLength > 0 &&
+        declaredLength !== storedFile.byte_size)
+    ) {
+      throw new Error("Private file size metadata is invalid");
+    }
+    const buffer = await readPrivateDownloadResponseBodyBounded(
+      response,
+      storedFile.byte_size,
+    );
+    if (buffer.byteLength !== storedFile.byte_size) {
+      throw new Error("Private file size verification failed");
+    }
+    return buffer;
   }
 
   if (storedFile.bucket !== "local") {
@@ -12547,6 +13221,15 @@ const readStoredPrivateFile = async (storedFile: StoredPrivateFile) => {
   const relativePath = path.relative(privateFilesRoot, absolutePath);
   if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
     throw new Error("Private file path is invalid");
+  }
+  const stats = await fs.stat(absolutePath);
+  if (
+    !stats.isFile() ||
+    stats.size !== storedFile.byte_size ||
+    stats.size < 1 ||
+    stats.size > maxVerificationFileSize
+  ) {
+    throw new Error("Private local file size verification failed");
   }
   return fs.readFile(absolutePath);
 };
@@ -12568,6 +13251,469 @@ const parseStoredPrivateFile = (value: unknown): StoredPrivateFile | undefined =
   }
 
   return file as StoredPrivateFile;
+};
+
+class PrivateFileUploadHttpError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code:
+      | "UPLOAD_NOT_READY"
+      | "UPLOAD_TICKET_INVALID"
+      | "UPLOAD_TICKET_EXPIRED"
+      | "UPLOAD_TICKET_LIMIT"
+      | "UPLOAD_STORAGE_LIMIT",
+    message: string,
+    options?: { cause?: unknown },
+  ) {
+    super(message, options);
+    this.name = "PrivateFileUploadHttpError";
+  }
+}
+
+const parsePrivateFileUploadDescriptor = (
+  value: unknown,
+): PrivateFileUploadDescriptor | undefined => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const file = value as Record<string, unknown>;
+  const contentType = normalizeOptionalText(file.type)?.toLowerCase();
+  const byteSize = Number(file.size);
+  const sha256 = normalizeOptionalText(file.sha256)?.toLowerCase();
+  if (
+    !contentType ||
+    !evidenceFileMimeTypes.has(contentType) ||
+    !Number.isSafeInteger(byteSize) ||
+    byteSize < 1 ||
+    byteSize > maxVerificationFileSize ||
+    !sha256 ||
+    !/^[0-9a-f]{64}$/.test(sha256) ||
+    "data_url" in file ||
+    "data" in file ||
+    "base64" in file
+  ) {
+    return undefined;
+  }
+  return { contentType, byteSize, sha256 };
+};
+
+const privateTusUploadEndpoint = () => {
+  const { url } = requireSupabaseConfig();
+  const parsed = new URL(url);
+  const canonicalSuffix = ".supabase.co";
+  if (parsed.protocol === "https:" && parsed.hostname.endsWith(canonicalSuffix)) {
+    const projectRef = parsed.hostname.slice(0, -canonicalSuffix.length);
+    if (/^[a-z0-9-]{6,80}$/.test(projectRef) && !projectRef.includes(".")) {
+      return `https://${projectRef}.storage.supabase.co/storage/v1/upload/resumable`;
+    }
+  }
+  if (
+    !isProductionRuntime &&
+    (parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost")
+  ) {
+    return `${parsed.origin}/storage/v1/upload/resumable`;
+  }
+  throw new Error("Supabase direct Storage hostname could not be derived safely");
+};
+
+const encodeStorageObjectPath = (objectPath: string) =>
+  objectPath.split("/").map(encodeURIComponent).join("/");
+
+const createPrivateUploadSignature = async (objectPath: string) => {
+  if (!isAllowedPrivateStorageObjectPath(objectPath)) {
+    throw new PrivateFileUploadHttpError(
+      409,
+      "UPLOAD_TICKET_INVALID",
+      "Upload ticket is invalid",
+    );
+  }
+  await ensurePrivateStorageBucket();
+  const encodedObjectPath = encodeStorageObjectPath(objectPath);
+  const expectedRelativePath = `/object/upload/sign/${encodeURIComponent(
+    privateStorageBucket,
+  )}/${encodedObjectPath}`;
+  const signResponse = await fetch(supabaseStorageUrl(expectedRelativePath), {
+    method: "POST",
+    headers: {
+      ...supabaseStorageHeaders("application/json"),
+      "x-upsert": "false",
+    },
+    body: "{}",
+    signal: createSupabaseTimeoutSignal(),
+  });
+  if (!signResponse.ok) {
+    throw new PrivateFileUploadHttpError(
+      503,
+      "UPLOAD_NOT_READY",
+      "Upload preparation is temporarily unavailable",
+    );
+  }
+  const payload = (await signResponse.json().catch(() => undefined)) as
+    | { url?: unknown }
+    | undefined;
+  const relativeUrl = typeof payload?.url === "string" ? payload.url : "";
+  if (!relativeUrl.startsWith(`${expectedRelativePath}?`)) {
+    throw new PrivateFileUploadHttpError(
+      503,
+      "UPLOAD_NOT_READY",
+      "Upload preparation returned an invalid capability",
+    );
+  }
+  const signedUrl = new URL(`${supabaseStorageUrl("")}${relativeUrl}`);
+  const uploadSignature = signedUrl.searchParams.get("token") ?? "";
+  if (
+    !uploadSignature ||
+    uploadSignature.length > 8_192 ||
+    [...uploadSignature].some((character) => {
+      const codePoint = character.codePointAt(0) ?? 0;
+      return codePoint <= 0x20 || codePoint === 0x7f;
+    })
+  ) {
+    throw new PrivateFileUploadHttpError(
+      503,
+      "UPLOAD_NOT_READY",
+      "Upload preparation returned an invalid capability",
+    );
+  }
+  return uploadSignature;
+};
+
+type PrivateUploadTicketIssueRpcRow = {
+  outcome?: unknown;
+  ticket_id?: unknown;
+  bucket?: unknown;
+  object_path?: unknown;
+  finalize_expires_at?: unknown;
+};
+
+const issuePrivateFileUploadTicket = async ({
+  ticketId,
+  purpose,
+  actorProfileId,
+  resourceId,
+  contractId,
+  requirementId,
+  reservationId,
+  descriptor,
+}: {
+  ticketId: string;
+  purpose: PrivateFileUploadPurpose;
+  actorProfileId: string;
+  resourceId: string;
+  contractId?: string;
+  requirementId?: string;
+  reservationId?: string;
+  descriptor: PrivateFileUploadDescriptor;
+}) => {
+  const payload = await callSupabaseRpc<
+    PrivateUploadTicketIssueRpcRow[] | PrivateUploadTicketIssueRpcRow
+  >(
+    "issue_directsign_private_file_upload_ticket",
+    {
+      p_ticket_id: ticketId,
+      p_purpose: purpose,
+      p_actor_profile_id: actorProfileId,
+      p_resource_id: resourceId,
+      p_contract_id: contractId ?? null,
+      p_requirement_id: requirementId ?? null,
+      p_content_type: descriptor.contentType,
+      p_byte_size: descriptor.byteSize,
+      p_sha256: descriptor.sha256,
+      p_reservation_id: reservationId ?? null,
+      p_max_deliverables: maxDeliverablesPerContract,
+      p_max_contract_bytes: maxDeliverableBytesPerContract,
+      p_max_creator_daily_bytes: maxDeliverableBytesPerCreatorPerDay,
+    },
+    "private upload ticket issue",
+  );
+  const result = Array.isArray(payload) ? payload[0] : payload;
+  const outcome = normalizeOptionalText(result?.outcome);
+  if (outcome !== "issued" && outcome !== "idempotent") {
+    if (outcome === "expired") {
+      throw new PrivateFileUploadHttpError(
+        409,
+        "UPLOAD_TICKET_EXPIRED",
+        "Upload ticket has expired",
+      );
+    }
+    if (outcome === "ticket_limit" || outcome === "unreferenced_limit") {
+      throw new PrivateFileUploadHttpError(
+        429,
+        "UPLOAD_TICKET_LIMIT",
+        "Too many private uploads are pending",
+      );
+    }
+    if (outcome === "storage_limit") {
+      throw new PrivateFileUploadHttpError(
+        413,
+        "UPLOAD_STORAGE_LIMIT",
+        "Private upload storage limit reached",
+      );
+    }
+    throw new PrivateFileUploadHttpError(
+      409,
+      "UPLOAD_TICKET_INVALID",
+      "Upload ticket could not be issued",
+    );
+  }
+  const resultTicketId = normalizeOptionalText(result?.ticket_id);
+  const bucket = normalizeOptionalText(result?.bucket);
+  const objectPath = normalizeOptionalText(result?.object_path);
+  const finalizeExpiresAt = normalizeOptionalText(result?.finalize_expires_at);
+  if (
+    resultTicketId !== ticketId ||
+    bucket !== privateStorageBucket ||
+    !objectPath ||
+    !isAllowedPrivateStorageObjectPath(objectPath) ||
+    !finalizeExpiresAt ||
+    !Number.isFinite(Date.parse(finalizeExpiresAt))
+  ) {
+    throw new PrivateFileUploadHttpError(
+      503,
+      "UPLOAD_NOT_READY",
+      "Upload ticket persistence could not be verified",
+    );
+  }
+  const uploadSignature = await createPrivateUploadSignature(objectPath);
+  return {
+    ticket_id: resultTicketId,
+    upload_url: privateTusUploadEndpoint(),
+    upload_signature: uploadSignature,
+    bucket,
+    object_path: objectPath,
+    initiation_expires_at: finalizeExpiresAt,
+    finalize_expires_at: finalizeExpiresAt,
+  };
+};
+
+type PrivateUploadTicketReadRpcRow = {
+  outcome?: unknown;
+  ticket_id?: unknown;
+  purpose?: unknown;
+  actor_profile_id?: unknown;
+  resource_id?: unknown;
+  contract_id?: unknown;
+  requirement_id?: unknown;
+  reservation_id?: unknown;
+  bucket?: unknown;
+  object_path?: unknown;
+  content_type?: unknown;
+  byte_size?: unknown;
+  sha256?: unknown;
+  state?: unknown;
+  finalize_expires_at?: unknown;
+};
+
+const readPrivateFileUploadTicket = async ({
+  ticketId,
+  actorProfileId,
+  purpose,
+  resourceId,
+  contractId,
+  requirementId,
+}: {
+  ticketId: string;
+  actorProfileId: string;
+  purpose: PrivateFileUploadPurpose;
+  resourceId: string;
+  contractId?: string;
+  requirementId?: string;
+}): Promise<DirectsignPrivateFileUploadTicket> => {
+  const payload = await callSupabaseRpc<
+    PrivateUploadTicketReadRpcRow[] | PrivateUploadTicketReadRpcRow
+  >(
+    "read_directsign_private_file_upload_ticket",
+    {
+      p_ticket_id: ticketId,
+      p_actor_profile_id: actorProfileId,
+      p_purpose: purpose,
+      p_resource_id: resourceId,
+      p_contract_id: contractId ?? null,
+      p_requirement_id: requirementId ?? null,
+    },
+    "private upload ticket read",
+  );
+  const result = Array.isArray(payload) ? payload[0] : payload;
+  const state = normalizeOptionalText(result?.state);
+  const byteSize = Number(result?.byte_size);
+  const ticket: DirectsignPrivateFileUploadTicket = {
+    ticket_id: normalizeOptionalText(result?.ticket_id) ?? "",
+    purpose: normalizeOptionalText(result?.purpose) as PrivateFileUploadPurpose,
+    actor_profile_id: normalizeOptionalText(result?.actor_profile_id) ?? "",
+    resource_id: normalizeOptionalText(result?.resource_id) ?? "",
+    contract_id: normalizeOptionalText(result?.contract_id),
+    requirement_id: normalizeOptionalText(result?.requirement_id),
+    reservation_id: normalizeOptionalText(result?.reservation_id),
+    bucket: normalizeOptionalText(result?.bucket) ?? "",
+    object_path: normalizeOptionalText(result?.object_path) ?? "",
+    content_type: normalizeOptionalText(result?.content_type) ?? "",
+    byte_size: byteSize,
+    sha256: normalizeOptionalText(result?.sha256) ?? "",
+    state: state as DirectsignPrivateFileUploadTicket["state"],
+    finalize_expires_at:
+      normalizeOptionalText(result?.finalize_expires_at) ?? "",
+  };
+  if (
+    result?.outcome !== "found" ||
+    ticket.ticket_id !== ticketId ||
+    ticket.purpose !== purpose ||
+    ticket.actor_profile_id !== actorProfileId ||
+    ticket.resource_id !== resourceId ||
+    (ticket.contract_id ?? undefined) !== contractId ||
+    (ticket.requirement_id ?? undefined) !== requirementId ||
+    ticket.bucket !== privateStorageBucket ||
+    !isAllowedPrivateStorageObjectPath(ticket.object_path) ||
+    !evidenceFileMimeTypes.has(ticket.content_type) ||
+    !Number.isSafeInteger(ticket.byte_size) ||
+    ticket.byte_size < 1 ||
+    ticket.byte_size > maxVerificationFileSize ||
+    !/^[0-9a-f]{64}$/.test(ticket.sha256) ||
+    !["issued", "finalized", "cleanup_pending", "cleaned"].includes(
+      ticket.state,
+    ) ||
+    !Number.isFinite(Date.parse(ticket.finalize_expires_at))
+  ) {
+    throw new PrivateFileUploadHttpError(
+      409,
+      "UPLOAD_TICKET_INVALID",
+      "Upload ticket is invalid",
+    );
+  }
+  return ticket;
+};
+
+const readPrivateUploadResponseBodyBounded = async (
+  response: Response,
+  maximumBytes: number,
+) => {
+  if (!response.body) {
+    throw new PrivateFileUploadHttpError(
+      409,
+      "UPLOAD_TICKET_INVALID",
+      "Uploaded file has no readable body",
+    );
+  }
+  const reader = response.body.getReader();
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maximumBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw new PrivateFileUploadHttpError(
+          409,
+          "UPLOAD_TICKET_INVALID",
+          "Uploaded file exceeds its ticket size",
+        );
+      }
+      chunks.push(Buffer.from(value));
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(chunks, totalBytes);
+};
+
+const readAndVerifyPrivateUploadObject = async (
+  ticket: DirectsignPrivateFileUploadTicket,
+): Promise<StoredPrivateFile> => {
+  if (ticket.state === "cleanup_pending" || ticket.state === "cleaned") {
+    throw new PrivateFileUploadHttpError(
+      409,
+      "UPLOAD_TICKET_INVALID",
+      "Upload ticket is no longer usable",
+    );
+  }
+  if (
+    ticket.state === "issued" &&
+    Date.parse(ticket.finalize_expires_at) <= Date.now()
+  ) {
+    throw new PrivateFileUploadHttpError(
+      409,
+      "UPLOAD_TICKET_EXPIRED",
+      "Upload ticket has expired",
+    );
+  }
+  await ensurePrivateStorageBucket();
+  const response = await fetch(
+    supabaseStorageUrl(
+      `/object/${encodeURIComponent(ticket.bucket)}/${encodeStorageObjectPath(
+        ticket.object_path,
+      )}`,
+    ),
+    { headers: supabaseStorageHeaders(), signal: createSupabaseTimeoutSignal() },
+  );
+  if (response.status === 404) {
+    throw new PrivateFileUploadHttpError(
+      409,
+      "UPLOAD_NOT_READY",
+      "Uploaded file is not ready",
+    );
+  }
+  if (!response.ok) {
+    throw new PrivateFileUploadHttpError(
+      503,
+      "UPLOAD_NOT_READY",
+      "Uploaded file could not be verified yet",
+    );
+  }
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (
+    Number.isFinite(declaredLength) &&
+    declaredLength > 0 &&
+    declaredLength !== ticket.byte_size
+  ) {
+    throw new PrivateFileUploadHttpError(
+      409,
+      "UPLOAD_TICKET_INVALID",
+      "Uploaded file does not match its ticket",
+    );
+  }
+  const buffer = await readPrivateUploadResponseBodyBounded(
+    response,
+    Math.min(ticket.byte_size, maxVerificationFileSize),
+  );
+  const responseContentType = (response.headers.get("content-type") ?? "")
+    .split(";", 1)[0]
+    .trim()
+    .toLowerCase();
+  const actualSha256 = createHash("sha256").update(buffer).digest("hex");
+  if (
+    buffer.byteLength !== ticket.byte_size ||
+    responseContentType !== ticket.content_type ||
+    !assertDeclaredMimeMatchesContent(
+      ticket.content_type,
+      buffer,
+      evidenceFileMimeTypes,
+    ) ||
+    actualSha256 !== ticket.sha256
+  ) {
+    throw new PrivateFileUploadHttpError(
+      409,
+      "UPLOAD_TICKET_INVALID",
+      "Uploaded file does not match its ticket",
+    );
+  }
+  return {
+    provider: "supabase_storage",
+    bucket: ticket.bucket,
+    path: ticket.object_path,
+    file_name: `evidence.${extensionForMimeType(ticket.content_type)}`,
+    content_type: ticket.content_type,
+    byte_size: ticket.byte_size,
+    sha256: ticket.sha256,
+    stored_at: new Date().toISOString(),
+  };
+};
+
+const sendPrivateFileUploadError = (
+  response: express.Response,
+  error: unknown,
+) => {
+  if (!(error instanceof PrivateFileUploadHttpError)) return false;
+  response.status(error.status).json({ code: error.code, error: error.message });
+  return true;
 };
 
 const buildVerificationEvidenceSnapshot = (
@@ -13385,6 +14531,18 @@ const isUuid = (value: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     value,
   );
+
+const requireAuthoritativeContractMutationId = (
+  response: express.Response,
+  contractId: string,
+) => {
+  if (!useSupabase || isUuid(contractId)) return true;
+  response.status(409).json({
+    code: "CONTRACT_AUTHORITATIVE_RECORD_REQUIRED",
+    error: "계약 원본 동기화가 필요합니다. 잠시 후 다시 시도해 주세요.",
+  });
+  return false;
+};
 
 const toDateOnly = (value: string | undefined) => {
   if (!hasText(value)) return undefined;
@@ -14481,47 +15639,6 @@ const hydrateBrandRowsWithNormalizedCampaigns = async (
   }));
 };
 
-const upsertNormalizedMarketplaceCampaign = async (
-  organizationId: string,
-  brandProfileId: string,
-  campaign: MarketplaceBrandCampaign,
-  actorProfileId: string,
-) => {
-  if (!campaign.id) return false;
-  const now = new Date().toISOString();
-  try {
-    await upsertSupabaseV2Rows(
-      marketplaceCampaignTable,
-      [
-        {
-          id: campaign.id,
-          brand_profile_id: brandProfileId,
-          organization_id: organizationId,
-          campaign_data: {
-            ...campaign,
-            statusUpdatedByProfileId: actorProfileId,
-          },
-          status: campaign.status ?? "open",
-          created_at: campaign.createdAt ?? now,
-          updated_at: campaign.updatedAt ?? now,
-          archived_at: null,
-        },
-      ],
-      "id",
-    );
-    return true;
-  } catch (error) {
-    if (!isMissingMarketplaceCampaignTableError(error)) throw error;
-    if (!normalizedMarketplaceCampaignFallbackWarned) {
-      console.warn(
-        "[yeollock.me] marketplace_campaigns is unavailable; campaign writes remain on the legacy brand mirror until migrations are applied.",
-      );
-      normalizedMarketplaceCampaignFallbackWarned = true;
-    }
-    return false;
-  }
-};
-
 const normalizeCampaignAccessInteger = (value: unknown, fallback = 0) => {
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : fallback;
@@ -14587,15 +15704,17 @@ const publishMarketplaceCampaignAtomically = async ({
   actorProfileId,
   campaign,
   publicationRequestKey,
+  expectedUpdatedAt,
 }: {
   organizationId: string;
   brandProfileId: string;
   actorProfileId: string;
   campaign: MarketplaceBrandCampaign;
   publicationRequestKey: string;
+  expectedUpdatedAt?: string;
 }) => {
   if (!campaign.id) throw new Error("Campaign id is required for publication");
-  const rpcResponse = await fetchSupabase("rpc/publish_marketplace_campaign", "", {
+  const rpcResponse = await fetchSupabase("rpc/publish_marketplace_campaign_cas", "", {
     method: "POST",
     headers: { Prefer: "return=representation" },
     body: JSON.stringify({
@@ -14608,6 +15727,9 @@ const publishMarketplaceCampaignAtomically = async ({
         statusUpdatedByProfileId: actorProfileId,
       },
       p_publication_request_key: publicationRequestKey,
+      ...(expectedUpdatedAt
+        ? { p_expected_updated_at: expectedUpdatedAt }
+        : {}),
     }),
   });
   await assertSupabaseOk(rpcResponse, "Supabase atomic campaign publication");
@@ -14684,15 +15806,17 @@ const finalizeMarketplaceCampaignRecruitmentAtomically = async ({
   brandProfileId,
   actorProfileId,
   campaign,
+  expectedUpdatedAt,
 }: {
   organizationId: string;
   brandProfileId: string;
   actorProfileId: string;
   campaign: MarketplaceBrandCampaign;
+  expectedUpdatedAt: string;
 }) => {
   if (!campaign.id) throw new Error("Campaign id is required for finalization");
   const rpcResponse = await fetchSupabase(
-    "rpc/finalize_marketplace_campaign_recruitment",
+    "rpc/finalize_marketplace_campaign_recruitment_cas",
     "",
     {
       method: "POST",
@@ -14707,6 +15831,7 @@ const finalizeMarketplaceCampaignRecruitmentAtomically = async ({
           status: "closed",
           statusUpdatedByProfileId: actorProfileId,
         },
+        p_expected_updated_at: expectedUpdatedAt,
       }),
     },
   );
@@ -14752,6 +15877,81 @@ const finalizeMarketplaceCampaignRecruitmentAtomically = async ({
       row.result_not_selected_count,
     ),
   };
+};
+
+const transitionMarketplaceCampaignStatusAtomically = async ({
+  organizationId,
+  brandProfileId,
+  actorProfileId,
+  campaign,
+  expectedUpdatedAt,
+}: {
+  organizationId: string;
+  brandProfileId: string;
+  actorProfileId: string;
+  campaign: MarketplaceBrandCampaign;
+  expectedUpdatedAt: string;
+}) => {
+  if (!campaign.id) throw new Error("Campaign id is required for status transition");
+  if (campaign.status !== "open" && campaign.status !== "ended") {
+    throw new Error("Campaign target status is invalid for atomic transition");
+  }
+
+  const rows = await callSupabaseRpc<TransitionMarketplaceCampaignStatusRpcRow[]>(
+    "transition_marketplace_campaign_status_cas",
+    {
+      p_campaign_id: campaign.id,
+      p_brand_profile_id: brandProfileId,
+      p_organization_id: organizationId,
+      p_actor_profile_id: actorProfileId,
+      p_target_status: campaign.status,
+      p_campaign_data: campaign,
+      p_expected_updated_at: expectedUpdatedAt,
+    },
+    "atomic marketplace campaign status transition",
+    { headers: { Prefer: "return=representation" } },
+  );
+  const row = rows[0];
+  const outcome = normalizeOptionalText(row?.outcome);
+  if (
+    !row ||
+    !outcome ||
+    !["updated", "version_conflict", "invalid_transition", "not_found"].includes(
+      outcome,
+    )
+  ) {
+    throw new Error("Supabase campaign status transition returned invalid data");
+  }
+  if (outcome !== "updated") return { outcome };
+
+  const status = normalizeOptionalText(row.result_status);
+  const updatedAt = normalizeOptionalText(row.result_updated_at);
+  const campaignData =
+    row.result_campaign_data && typeof row.result_campaign_data === "object"
+      ? (row.result_campaign_data as Record<string, unknown>)
+      : undefined;
+  if (
+    !status ||
+    !marketplaceCampaignStatuses.has(status) ||
+    !updatedAt ||
+    !campaignData
+  ) {
+    throw new Error("Supabase campaign status transition returned invalid campaign");
+  }
+  const savedCampaign = mapNormalizedMarketplaceCampaignRow({
+    id: campaign.id,
+    brand_profile_id: brandProfileId,
+    organization_id: organizationId,
+    campaign_data: campaignData,
+    status: status as MarketplaceCampaignStatus,
+    created_at: normalizeOptionalText(campaignData.createdAt) ?? updatedAt,
+    updated_at: updatedAt,
+    archived_at: null,
+  });
+  if (!savedCampaign) {
+    throw new Error("Supabase campaign status transition returned invalid campaign body");
+  }
+  return { outcome, campaign: savedCampaign };
 };
 
 const reserveMarketplaceCampaignApplicationSelectionAtomically = async ({
@@ -15868,6 +17068,47 @@ interface ActiveNaverInfluencerBadgeRpcRow {
   blog_id?: unknown;
 }
 
+type SupabaseSessionAuthorityResult = {
+  active?: boolean;
+  reason?: "active" | "reset_in_progress" | "session_missing" | "before_cutoff" | "user_missing" | "invalid";
+  generation?: number;
+};
+
+const requireAuthoritativeSupabaseSession = async (
+  accessToken: string,
+  expectedUserId?: string,
+) => {
+  const claims = decodeSupabaseAccessTokenClaims(accessToken);
+  if (
+    !isUuidText(claims?.sub) ||
+    !isUuidText(claims.session_id) ||
+    (expectedUserId !== undefined && claims.sub !== expectedUserId)
+  ) {
+    return false;
+  }
+
+  let result: SupabaseSessionAuthorityResult;
+  try {
+    result = await callSupabaseRpc<SupabaseSessionAuthorityResult>(
+      "verify_directsign_auth_session",
+      {
+        p_user_id: claims.sub,
+        p_auth_session_id: claims.session_id,
+      },
+      "authoritative auth session verification",
+    );
+  } catch (error) {
+    throw new AuthSessionTemporarilyUnavailableError(error);
+  }
+
+  if (result.reason === "reset_in_progress") {
+    throw new AuthSessionTemporarilyUnavailableError(
+      new Error("Password reset session barrier is active"),
+    );
+  }
+  return result.active === true && result.reason === "active";
+};
+
 const attachActiveNaverInfluencerBadges = async (
   profiles: MarketplaceInfluencerProfile[],
 ) => {
@@ -15980,15 +17221,19 @@ const readIndexedMarketplaceInfluencerPage = async ({
 };
 
 const readAuthenticatedMarketplaceInfluencerPage = async ({
-  accessToken,
+  actorUserId,
+  actorProfileId,
   organizationId,
+  correlationId,
   page,
   sort,
   filters,
   savedOnly = false,
 }: {
-  accessToken: string;
+  actorUserId: string;
+  actorProfileId: string;
   organizationId: string;
+  correlationId: string;
   page: number;
   sort: MarketplaceInfluencerSort;
   filters: MarketplaceInfluencerSearchFilters;
@@ -16004,67 +17249,131 @@ const readAuthenticatedMarketplaceInfluencerPage = async ({
     });
   }
 
-  const rpcResponse = await fetchSupabaseAsUser(
-    "rpc/list_authenticated_marketplace_influencers",
-    accessToken,
-    "",
-    {
-      method: "POST",
-      body: JSON.stringify({
-        p_organization_id: organizationId,
-        p_search: filters.search ?? null,
-        p_platform: filters.platform ?? null,
-        p_categories: filters.categories ?? [],
-        p_countries: filters.countries ?? [],
-        p_sort: sort,
-        p_page: page,
-        p_page_size: marketplaceInfluencerPageSize,
-        p_saved_only: savedOnly,
-      }),
-    },
-  );
-  const accessError =
-    rpcResponse.status === 403
-      ? await rpcResponse
-          .clone()
-          .json()
-          .catch(() => undefined)
-      : undefined;
-  if (
-    accessError &&
-    typeof accessError === "object" &&
-    "code" in accessError &&
-    accessError.code === "42501" &&
-    "message" in accessError &&
-    accessError.message === "authenticated production advertiser profile required"
-  ) {
-    await rpcResponse.arrayBuffer();
-    throw new AuthenticatedInfluencerDirectoryAccessError();
+  const startedAt = Date.now();
+  let upstreamStatus: number | "unavailable" = "unavailable";
+  try {
+    const rpcResponse = await fetchSupabase(
+      "rpc/list_server_marketplace_influencers",
+      "",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          p_actor_user_id: actorUserId,
+          p_actor_profile_id: actorProfileId,
+          p_organization_id: organizationId,
+          p_search: filters.search ?? null,
+          p_platform: filters.platform ?? null,
+          p_categories: filters.categories ?? [],
+          p_countries: filters.countries ?? [],
+          p_sort: sort,
+          p_page: page,
+          p_page_size: marketplaceInfluencerPageSize,
+          p_saved_only: savedOnly,
+        }),
+      },
+    );
+    upstreamStatus = rpcResponse.status;
+    if (!rpcResponse.ok) {
+      const failure = await readMarketplaceInfluencerDirectoryFailure(rpcResponse);
+      if (failure.status === 403 && failure.sqlState === "42501") {
+        throw new AuthenticatedInfluencerDirectoryAccessError(failure.sqlState);
+      }
+      throw new MarketplaceInfluencerDirectoryUpstreamError(
+        failure.status,
+        failure.sqlState,
+      );
+    }
+
+    const parsed = parseAuthenticatedMarketplaceInfluencerDirectoryPayload(
+      await rpcResponse.json(),
+    );
+    const hydratedProfiles =
+      await hydrateAuthenticatedMarketplaceInfluencerDirectoryItems(parsed.items);
+    const profiles = await attachActiveNaverInfluencerBadges(hydratedProfiles);
+    return {
+      profiles,
+      total: parsed.total,
+      page: parsed.page,
+      pageSize: marketplaceInfluencerPageSize,
+      totalPages: parsed.totalPages,
+      hasMore: parsed.hasMore,
+    };
+  } catch (error) {
+    const failureStatus =
+      error instanceof MarketplaceInfluencerDirectoryUpstreamError ||
+      error instanceof AuthenticatedInfluencerDirectoryAccessError
+        ? error.upstreamStatus
+        : upstreamStatus;
+    const sqlState =
+      error instanceof MarketplaceInfluencerDirectoryUpstreamError ||
+      error instanceof AuthenticatedInfluencerDirectoryAccessError
+        ? error.sqlState
+        : undefined;
+    const failureKind =
+      error instanceof AuthenticatedInfluencerDirectoryAccessError
+        ? "access_denied"
+        : error instanceof MarketplaceInfluencerDirectoryUpstreamError
+          ? "upstream_http"
+          : error instanceof DOMException && error.name === "TimeoutError"
+            ? "timeout"
+            : "invalid_or_unavailable_response";
+    console.warn(`[${productName}] marketplace discovery upstream failure`, {
+      operation: "marketplace_influencer_directory",
+      correlation_id: correlationId,
+      upstream_status: failureStatus,
+      sqlstate: sqlState ?? "unavailable",
+      duration_ms: Math.max(0, Date.now() - startedAt),
+      failure_kind: failureKind,
+    });
+
+    if (
+      error instanceof AuthenticatedInfluencerDirectoryAccessError ||
+      error instanceof MarketplaceInfluencerDirectoryUpstreamError
+    ) {
+      throw error;
+    }
+    throw new MarketplaceInfluencerDirectoryUpstreamError(
+      failureStatus,
+      undefined,
+      error,
+    );
   }
-  await assertSupabaseOk(
-    rpcResponse,
-    "Supabase authenticated influencer directory search",
-  );
-  const parsed = parseAuthenticatedMarketplaceInfluencerDirectoryPayload(
-    await rpcResponse.json(),
-  );
-  const hydratedProfiles = await hydrateAuthenticatedMarketplaceInfluencerDirectoryItems(
-    parsed.items,
-  );
-  const profiles = await attachActiveNaverInfluencerBadges(hydratedProfiles);
+};
+
+const readMarketplaceInfluencerDirectoryFailure = async (response: Response) => {
+  const payload = await response
+    .clone()
+    .json()
+    .catch(() => undefined);
+  const candidateCode =
+    payload && typeof payload === "object" && "code" in payload
+      ? payload.code
+      : undefined;
   return {
-    profiles,
-    total: parsed.total,
-    page: parsed.page,
-    pageSize: marketplaceInfluencerPageSize,
-    totalPages: parsed.totalPages,
-    hasMore: parsed.hasMore,
+    status: response.status,
+    sqlState:
+      typeof candidateCode === "string" && /^[0-9A-Z]{5}$/.test(candidateCode)
+        ? candidateCode
+        : undefined,
   };
 };
 
+class MarketplaceInfluencerDirectoryUpstreamError extends Error {
+  constructor(
+    readonly upstreamStatus: number | "unavailable",
+    readonly sqlState?: string,
+    cause?: unknown,
+  ) {
+    super("Marketplace influencer directory is temporarily unavailable", { cause });
+    this.name = "MarketplaceInfluencerDirectoryUpstreamError";
+  }
+}
+
 class AuthenticatedInfluencerDirectoryAccessError extends Error {
-  constructor() {
-    super("Authenticated production advertiser profile required");
+  readonly upstreamStatus = 403;
+
+  constructor(readonly sqlState?: string) {
+    super("Trusted production advertiser membership is required");
     this.name = "AuthenticatedInfluencerDirectoryAccessError";
   }
 }
@@ -16443,6 +17752,9 @@ const publicMarketplaceCache = new Map<
   PublicMarketplaceCacheKey,
   PublicMarketplaceCacheEntry<unknown>
 >();
+const campaignShareImageCache = new Map<string, Promise<Buffer>>();
+const campaignShareImageCacheMaxEntries = 64;
+let genericCampaignShareImagePromise: Promise<Buffer> | undefined;
 
 const publicMarketplaceCacheTags: Record<PublicMarketplaceCacheKey, string[]> = {
   "marketplace-influencers": ["marketplace", "marketplace:influencers"],
@@ -16643,6 +17955,7 @@ const clearPublicMarketplaceCache = () => {
 
 const clearPublicMarketplaceCampaignCache = () => {
   publicMarketplaceCache.delete("marketplace-campaigns");
+  campaignShareImageCache.clear();
   return expirePublicMarketplaceRuntimeCache(["marketplace:campaigns"]).catch(
     (error) => {
       console.warn(
@@ -16666,23 +17979,11 @@ const sendPublicMarketplaceJson = <T,>(
   response.json(payload);
 };
 
-const isValidPublicMarketplaceFreshQuery = (value: unknown) =>
-  typeof value === "string" &&
-  /^(?:1|true|\d{10,16})$/i.test(value.trim());
-
 const setFreshPublicMarketplaceHeaders = (response: express.Response) => {
   response.setHeader("Cache-Control", "private, no-store");
   response.setHeader("CDN-Cache-Control", "no-store");
   response.setHeader("Vercel-CDN-Cache-Control", "no-store");
   response.setHeader("Vary", "Cookie");
-};
-
-const sendFreshPublicMarketplaceJson = <T,>(
-  response: express.Response,
-  payload: T,
-) => {
-  setFreshPublicMarketplaceHeaders(response);
-  response.json(payload);
 };
 
 const warmPublicMarketplaceCache = () => {
@@ -18774,8 +20075,15 @@ const updateAdvertiserMarketplaceCampaignStatus = async (
     )}&archived_at=is.null&limit=2`,
   );
   const authoritativeCampaignRow = authoritativeCampaignRows?.[0];
+  if (!authoritativeCampaignRow) {
+    return {
+      ok: false as const,
+      status: 409,
+      code: "campaign_authoritative_record_required" as const,
+      error: "캠페인 원본을 다시 불러온 뒤 상태를 변경해 주세요.",
+    };
+  }
   if (
-    authoritativeCampaignRow &&
     selectedBrandId &&
     authoritativeCampaignRow.brand_profile_id !== selectedBrandId
   ) {
@@ -18809,20 +20117,96 @@ const updateAdvertiserMarketplaceCampaignStatus = async (
   }
 
   const currentBrand = buildAdvertiserBrandProfileFromAuth(auth, organization, existing);
-  const campaignIndex = currentBrand.activeCampaigns.findIndex(
-    (campaign) => campaign.id === campaignId,
+  const currentCampaign = mapNormalizedMarketplaceCampaignRow(
+    authoritativeCampaignRow,
   );
-  const storedAuthoritativeCampaign = authoritativeCampaignRow
-    ? mapNormalizedMarketplaceCampaignRow(authoritativeCampaignRow)
-    : undefined;
-  const currentCampaign =
-    storedAuthoritativeCampaign ?? currentBrand.activeCampaigns[campaignIndex];
 
   if (!currentCampaign) {
     return {
       ok: false as const,
       status: 404,
       error: "변경할 캠페인을 찾을 수 없습니다.",
+    };
+  }
+
+  if (currentCampaign.status === requestedStatus) {
+    return {
+      ok: false as const,
+      status: 409,
+      code: "campaign_status_unchanged" as const,
+      error: "캠페인이 이미 요청한 상태입니다.",
+    };
+  }
+
+  const [campaignApplications, campaignContracts] = await Promise.all([
+    readMarketplaceProposalRows(
+      `?select=id,status,converted_contract_id&direction=eq.influencer_to_brand&campaign_id=eq.${encodeURIComponent(
+        campaignId,
+      )}`,
+      "campaign lifecycle applications",
+    ),
+    readSupabaseRows<{
+      id: string;
+      status: string;
+      source_application_id?: string | null;
+    }>(
+      "contracts",
+      `?select=id,status,source_application_id&workflow_source=eq.marketplace_campaign&marketplace_campaign_id=eq.${encodeURIComponent(
+        campaignId,
+      )}&deleted_at=is.null`,
+      "campaign lifecycle contracts",
+    ),
+  ]);
+  const selectedApplications = campaignApplications.filter(
+    (application) =>
+      application.status === "accepted" ||
+      application.status === "converted_to_contract" ||
+      hasText(application.converted_contract_id ?? undefined),
+  );
+  const hasSelectedWorkflow =
+    selectedApplications.length > 0 || campaignContracts.length > 0;
+  const allSelectedContractsCompleted =
+    selectedApplications.length > 0 &&
+    campaignContracts.length > 0 &&
+    campaignContracts.every((contract) => contract.status === "completed") &&
+    selectedApplications.every((application) =>
+      campaignContracts.some(
+        (contract) =>
+          contract.status === "completed" &&
+          (contract.source_application_id === application.id ||
+            (hasText(application.converted_contract_id ?? undefined) &&
+              contract.id === application.converted_contract_id)),
+      ),
+    );
+
+  const currentStatus = currentCampaign.status;
+  const allowedTransition =
+    (currentStatus === "draft" && requestedStatus === "open") ||
+    (currentStatus === "open" && requestedStatus === "closed") ||
+    (currentStatus === "closed" &&
+      requestedStatus === "open" &&
+      !hasSelectedWorkflow) ||
+    (currentStatus === "ended" &&
+      requestedStatus === "open" &&
+      !hasSelectedWorkflow) ||
+    (currentStatus === "closed" &&
+      requestedStatus === "ended" &&
+      allSelectedContractsCompleted);
+
+  if (!allowedTransition) {
+    const error =
+      requestedStatus === "ended"
+        ? currentStatus === "open"
+          ? "캠페인을 종료 보관하려면 먼저 모집을 종료해 주세요."
+          : "선정자별 계약이 모두 마감된 뒤 캠페인을 종료할 수 있습니다."
+        : requestedStatus === "open" && hasSelectedWorkflow
+          ? "선정자별 진행이 시작된 캠페인은 다시 모집할 수 없습니다."
+          : "현재 캠페인 상태에서는 요청한 변경을 할 수 없습니다.";
+    return {
+      ok: false as const,
+      status: 409,
+      code: "campaign_status_transition_invalid" as const,
+      error,
     };
   }
 
@@ -18855,7 +20239,7 @@ const updateAdvertiserMarketplaceCampaignStatus = async (
       id: randomUUID(),
       actor,
       action: "campaign_status_updated",
-      description: `캠페인 상태를 ${statusLabel} 상태로 변경했습니다.`,
+      description: `캠페인 상태를 ‘${statusLabel}’${requestedStatus === "open" ? "으로" : "로"} 변경했습니다.`,
       createdAt: now,
     },
   ].slice(-80);
@@ -18868,84 +20252,103 @@ const updateAdvertiserMarketplaceCampaignStatus = async (
     activityEvents,
     ...statusFields,
   };
-  let authoritativeCampaign = updatedCampaign;
+  let authoritativeCampaign: MarketplaceBrandCampaign;
   let notSelectedCount = 0;
-  if (currentCampaign.status === "draft" && requestedStatus === "open") {
-    const publicationRequestKey = buildCampaignPublicationRequestKey({
-      request,
-      organizationId: organization.id,
-      brandProfileId: existing.id,
-      operationId: campaignId,
-    });
-    if (!publicationRequestKey) {
+  try {
+    if (currentCampaign.status === "draft" && requestedStatus === "open") {
+      const publicationRequestKey = buildCampaignPublicationRequestKey({
+        request,
+        organizationId: organization.id,
+        brandProfileId: existing.id,
+        operationId: campaignId,
+      });
+      if (!publicationRequestKey) {
+        return {
+          ok: false as const,
+          status: 422,
+          error: "캠페인 공개 요청을 다시 확인해 주세요.",
+          code: "campaign_idempotency_key_required" as const,
+        };
+      }
+      const publication = await publishMarketplaceCampaignAtomically({
+        organizationId: organization.id,
+        brandProfileId: existing.id,
+        actorProfileId: auth.profile.id,
+        campaign: updatedCampaign,
+        publicationRequestKey,
+        expectedUpdatedAt: authoritativeCampaignRow.updated_at,
+      });
+      if (!publication.allowed) {
+        return {
+          ok: false as const,
+          status: 403,
+          error:
+            "첫 2회 캠페인은 가입만으로 배포할 수 있습니다. 3회차부터는 인증된 사업주체임을 알릴 수 있도록 사업자 인증이 필요합니다.",
+          code: "advertiser_business_verification_required" as const,
+          next_path: publication.campaignAccess.next_path,
+          campaign_access: publication.campaignAccess,
+        };
+      }
+      authoritativeCampaign = publication.campaign;
+    } else if (requestedStatus === "closed") {
+      const finalization = await finalizeMarketplaceCampaignRecruitmentAtomically({
+        organizationId: organization.id,
+        brandProfileId: existing.id,
+        actorProfileId: auth.profile.id,
+        campaign: updatedCampaign,
+        expectedUpdatedAt: authoritativeCampaignRow.updated_at,
+      });
+      authoritativeCampaign = finalization.campaign;
+      notSelectedCount = finalization.notSelectedCount;
+    } else {
+      const transition = await transitionMarketplaceCampaignStatusAtomically({
+        organizationId: organization.id,
+        brandProfileId: existing.id,
+        actorProfileId: auth.profile.id,
+        campaign: updatedCampaign,
+        expectedUpdatedAt: authoritativeCampaignRow.updated_at,
+      });
+      if (transition.outcome === "not_found") {
+        return {
+          ok: false as const,
+          status: 404,
+          code: "campaign_not_found" as const,
+          error: "변경할 캠페인을 찾을 수 없습니다.",
+        };
+      }
+      if (transition.outcome === "version_conflict") {
+        return {
+          ok: false as const,
+          status: 409,
+          code: "campaign_edit_conflict" as const,
+          error: "캠페인이 변경되었습니다. 최신 내용을 불러온 뒤 다시 시도해 주세요.",
+        };
+      }
+      if (transition.outcome === "invalid_transition" || !transition.campaign) {
+        return {
+          ok: false as const,
+          status: 409,
+          code: "campaign_status_transition_invalid" as const,
+          error: "현재 캠페인 진행 상태에서는 요청한 변경을 할 수 없습니다.",
+        };
+      }
+      authoritativeCampaign = transition.campaign;
+    }
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      /MARKETPLACE_CAMPAIGN_VERSION_CONFLICT|could not serialize|deadlock detected|40001/i.test(
+        error.message,
+      )
+    ) {
       return {
         ok: false as const,
-        status: 422,
-        error: "캠페인 공개 요청을 다시 확인해 주세요.",
-        code: "campaign_idempotency_key_required" as const,
+        status: 409,
+        code: "campaign_edit_conflict" as const,
+        error: "캠페인이 변경되었습니다. 최신 내용을 불러온 뒤 다시 시도해 주세요.",
       };
     }
-    const publication = await publishMarketplaceCampaignAtomically({
-      organizationId: organization.id,
-      brandProfileId: existing.id,
-      actorProfileId: auth.profile.id,
-      campaign: updatedCampaign,
-      publicationRequestKey,
-    });
-    if (!publication.allowed) {
-      return {
-        ok: false as const,
-        status: 403,
-        error:
-          "첫 2회 캠페인은 가입만으로 배포할 수 있습니다. 3회차부터는 인증된 사업주체임을 알릴 수 있도록 사업자 인증이 필요합니다.",
-        code: "advertiser_business_verification_required" as const,
-        next_path: publication.campaignAccess.next_path,
-        campaign_access: publication.campaignAccess,
-      };
-    }
-    authoritativeCampaign = publication.campaign;
-  } else if (requestedStatus === "closed") {
-    const finalization = await finalizeMarketplaceCampaignRecruitmentAtomically({
-      organizationId: organization.id,
-      brandProfileId: existing.id,
-      actorProfileId: auth.profile.id,
-      campaign: updatedCampaign,
-    });
-    authoritativeCampaign = finalization.campaign;
-    notSelectedCount = finalization.notSelectedCount;
-  } else {
-    const normalizedCampaignSaved = await upsertNormalizedMarketplaceCampaign(
-      organization.id,
-      existing.id,
-      updatedCampaign,
-      auth.profile.id,
-    );
-    if (!normalizedCampaignSaved) {
-      throw new Error(
-        "Authoritative marketplace campaign storage is required for status updates",
-      );
-    }
-  }
-  const activeCampaigns =
-    campaignIndex >= 0
-      ? currentBrand.activeCampaigns.map((campaign, index) =>
-          index === campaignIndex ? authoritativeCampaign : campaign,
-        )
-      : [authoritativeCampaign, ...currentBrand.activeCampaigns];
-  const campaigns = normalizeBrandCampaigns(activeCampaigns, 20);
-
-  if (requestedStatus !== "closed") {
-    await patchSupabaseRecord(
-      "marketplace_brand_profiles",
-      `?id=eq.${encodeURIComponent(existing.id)}`,
-      {
-        active_campaigns: campaigns,
-        status_label:
-          requestedStatus === "open" ? "모집 중" : "운영 종료",
-        updated_at: now,
-      },
-      "Supabase advertiser campaign status update",
-    );
+    throw error;
   }
   await clearPublicMarketplaceCache();
 
@@ -19451,6 +20854,319 @@ const normalizeMarketplaceApplicationContactSnapshot = (
     purpose,
     retention_policy: campaignApplicationContactRetentionPolicy,
   };
+};
+
+const deleteStoredPrivateFile = async (file: StoredPrivateFile) => {
+  if (!isAllowedPrivateStorageObjectPath(file.path)) return;
+  if (file.provider === "supabase_storage") {
+    if (file.bucket !== privateStorageBucket) return;
+    const response = await fetch(
+      supabaseStorageUrl(
+        `/object/${encodeURIComponent(file.bucket)}/${file.path}`,
+      ),
+      { method: "DELETE", headers: supabaseStorageHeaders() },
+    );
+    if (!response.ok && response.status !== 404) {
+      throw new Error(`Supabase storage cleanup failed (${response.status})`);
+    }
+    return;
+  }
+
+  if (file.provider !== "local_file" || file.bucket !== "local") return;
+  const root = path.resolve(privateFilesDir);
+  const absolutePath = path.resolve(root, file.path);
+  const relativePath = path.relative(root, absolutePath);
+  if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) return;
+  await fs.unlink(absolutePath).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== "ENOENT") throw error;
+  });
+};
+
+type PrivateUploadCleanupTicketRow = {
+  id?: unknown;
+  purpose?: unknown;
+  actor_profile_id?: unknown;
+  resource_id?: unknown;
+  contract_id?: unknown;
+  requirement_id?: unknown;
+  reservation_id?: unknown;
+  bucket?: unknown;
+  object_path?: unknown;
+  content_type?: unknown;
+  byte_size?: unknown;
+  sha256?: unknown;
+  state?: unknown;
+  finalize_expires_at?: unknown;
+};
+
+const parsePrivateUploadCleanupTicket = (
+  value: PrivateUploadCleanupTicketRow,
+): DirectsignPrivateFileUploadTicket | undefined => {
+  const purpose = normalizeOptionalText(value.purpose);
+  const state = normalizeOptionalText(value.state);
+  const byteSize = Number(value.byte_size);
+  const ticket: DirectsignPrivateFileUploadTicket = {
+    ticket_id: normalizeOptionalText(value.id) ?? "",
+    purpose: purpose as PrivateFileUploadPurpose,
+    actor_profile_id: normalizeOptionalText(value.actor_profile_id) ?? "",
+    resource_id: normalizeOptionalText(value.resource_id) ?? "",
+    contract_id: normalizeOptionalText(value.contract_id),
+    requirement_id: normalizeOptionalText(value.requirement_id),
+    reservation_id: normalizeOptionalText(value.reservation_id),
+    bucket: normalizeOptionalText(value.bucket) ?? "",
+    object_path: normalizeOptionalText(value.object_path) ?? "",
+    content_type: normalizeOptionalText(value.content_type) ?? "",
+    byte_size: byteSize,
+    sha256: normalizeOptionalText(value.sha256) ?? "",
+    state: state as DirectsignPrivateFileUploadTicket["state"],
+    finalize_expires_at:
+      normalizeOptionalText(value.finalize_expires_at) ?? "",
+  };
+  if (
+    !isUuidText(ticket.ticket_id) ||
+    !["advertiser_verification", "influencer_verification", "deliverable"].includes(
+      ticket.purpose,
+    ) ||
+    !isUuidText(ticket.actor_profile_id) ||
+    !isUuidText(ticket.resource_id) ||
+    ticket.bucket !== privateStorageBucket ||
+    !isAllowedPrivateStorageObjectPath(ticket.object_path) ||
+    !evidenceFileMimeTypes.has(ticket.content_type) ||
+    !Number.isSafeInteger(ticket.byte_size) ||
+    ticket.byte_size < 1 ||
+    ticket.byte_size > maxVerificationFileSize ||
+    !/^[0-9a-f]{64}$/.test(ticket.sha256) ||
+    ticket.state !== "cleanup_pending"
+  ) {
+    return undefined;
+  }
+  return ticket;
+};
+
+const privateUploadTicketStoredFile = (
+  ticket: DirectsignPrivateFileUploadTicket,
+): StoredPrivateFile => ({
+  provider: "supabase_storage",
+  bucket: ticket.bucket,
+  path: ticket.object_path,
+  file_name: `evidence.${extensionForMimeType(ticket.content_type)}`,
+  content_type: ticket.content_type,
+  byte_size: ticket.byte_size,
+  sha256: ticket.sha256,
+  stored_at: new Date().toISOString(),
+});
+
+const completePrivateUploadCleanup = async (
+  ticketId: string,
+  leaseOwner: string,
+  outcome: "referenced" | "cleaned" | "retry",
+  errorCode?: string,
+) =>
+  callSupabaseRpc<string>(
+    "complete_directsign_private_upload_cleanup",
+    {
+      p_ticket_id: ticketId,
+      p_lease_owner: leaseOwner,
+      p_outcome: outcome,
+      p_error_code: errorCode ?? null,
+    },
+    "private upload cleanup completion",
+  );
+
+const enqueuePrivateUploadCleanupAlert = async (
+  ticketId: string,
+  reason: string,
+) =>
+  enqueueOperationalAlert({
+    kind: "verification_request",
+    action: "provider_degraded",
+    severity: "urgent",
+    subject_type: "private_upload_cleanup",
+    subject_id: ticketId,
+    title: "Private upload cleanup requires attention",
+    body:
+      "A private upload object was retained because its reference or deletion could not be verified safely.",
+    mobile_path: "/admin/mobile",
+    dashboard_path: "/admin",
+    dedupe_key: `private_upload_cleanup:${ticketId}:${reason}`,
+    decision_reason: reason,
+    metadata_json: { reason },
+  }).then(() => undefined);
+
+const hasExactPrivateUploadReference = async (
+  ticket: DirectsignPrivateFileUploadTicket,
+) => {
+  const storedFile = privateUploadTicketStoredFile(ticket);
+  if (ticket.purpose !== "deliverable") {
+    const rows = await readSupabaseRows<VerificationRequestRecord>(
+      "verification_requests",
+      `?select=id,profile_id,evidence_snapshot_json&id=eq.${encodeURIComponent(
+        ticket.resource_id,
+      )}&limit=2`,
+      "private upload verification reference",
+    );
+    if (rows.length > 1) {
+      throw new Error("Private upload verification reference is ambiguous");
+    }
+    const record = rows[0];
+    return Boolean(
+      record &&
+        record.profile_id === ticket.actor_profile_id &&
+        hasExactVerificationEvidenceFile(record, storedFile),
+    );
+  }
+  if (!ticket.contract_id) return false;
+  const [deliverables, files] = await Promise.all([
+    readSupabaseRows<
+      Pick<SupabaseDeliverableRow, "id" | "contract_id" | "creator_profile_id">
+    >(
+      "deliverables",
+      `?select=id,contract_id,creator_profile_id&id=eq.${encodeURIComponent(
+        ticket.resource_id,
+      )}&contract_id=eq.${encodeURIComponent(ticket.contract_id)}&limit=2`,
+      "private upload deliverable reference",
+    ),
+    readSupabaseRows<SupabaseContractFileRow>(
+      "contract_files",
+      `?select=id,contract_id,related_id,bucket,storage_path,content_type,byte_size,file_hash&contract_id=eq.${encodeURIComponent(
+        ticket.contract_id,
+      )}&related_type=eq.deliverable&related_id=eq.${encodeURIComponent(
+        ticket.resource_id,
+      )}&limit=4`,
+      "private upload contract file reference",
+    ),
+  ]);
+  return Boolean(
+    deliverables.some(
+      (row) =>
+        row.id === ticket.resource_id &&
+        row.contract_id === ticket.contract_id &&
+        row.creator_profile_id === ticket.actor_profile_id,
+    ) &&
+      files.some(
+        (row) =>
+          row.bucket === ticket.bucket &&
+          row.storage_path === ticket.object_path &&
+          row.content_type === ticket.content_type &&
+          Number(row.byte_size) === ticket.byte_size &&
+          row.file_hash === ticket.sha256,
+      ),
+  );
+};
+
+const runPrivateUploadCleanupSweep = async (limit = 50) => {
+  const leaseOwner = randomUUID();
+  const claimed = await callSupabaseRpc<PrivateUploadCleanupTicketRow[]>(
+    "claim_directsign_private_upload_cleanup",
+    { p_lease_owner: leaseOwner, p_limit: limit, p_lease_seconds: 300 },
+    "private upload cleanup claim",
+  );
+  let referenced = 0;
+  let cleaned = 0;
+  let retained = 0;
+  for (const claimedRow of Array.isArray(claimed) ? claimed : []) {
+    const ticket = parsePrivateUploadCleanupTicket(claimedRow);
+    const ticketId = normalizeOptionalText(claimedRow.id);
+    if (!ticket || !ticketId) {
+      retained += 1;
+      if (ticketId && isUuidText(ticketId)) {
+        await completePrivateUploadCleanup(
+          ticketId,
+          leaseOwner,
+          "retry",
+          "invalid_claim",
+        ).catch(() => undefined);
+        await enqueuePrivateUploadCleanupAlert(ticketId, "invalid_claim").catch(
+          () => undefined,
+        );
+      }
+      continue;
+    }
+    let isReferenced: boolean;
+    try {
+      isReferenced = await hasExactPrivateUploadReference(ticket);
+    } catch {
+      retained += 1;
+      await completePrivateUploadCleanup(
+        ticket.ticket_id,
+        leaseOwner,
+        "retry",
+        "reference_lookup_failed",
+      ).catch(() => undefined);
+      await enqueuePrivateUploadCleanupAlert(
+        ticket.ticket_id,
+        "reference_lookup_failed",
+      ).catch(() => undefined);
+      continue;
+    }
+    if (isReferenced) {
+      const outcome = await completePrivateUploadCleanup(
+        ticket.ticket_id,
+        leaseOwner,
+        "referenced",
+      );
+      if (outcome === "finalized") referenced += 1;
+      else retained += 1;
+      continue;
+    }
+    try {
+      await deleteStoredPrivateFile(privateUploadTicketStoredFile(ticket));
+      if (ticket.reservation_id) {
+        await releaseDeliverableUploadQuota(ticket.reservation_id);
+      }
+      const outcome = await completePrivateUploadCleanup(
+        ticket.ticket_id,
+        leaseOwner,
+        "cleaned",
+      );
+      if (outcome === "cleaned") cleaned += 1;
+      else retained += 1;
+    } catch {
+      retained += 1;
+      await completePrivateUploadCleanup(
+        ticket.ticket_id,
+        leaseOwner,
+        "retry",
+        "storage_delete_failed",
+      ).catch(() => undefined);
+      await enqueuePrivateUploadCleanupAlert(
+        ticket.ticket_id,
+        "storage_delete_failed",
+      ).catch(() => undefined);
+    }
+  }
+  return { claimed: claimed.length, referenced, cleaned, retained };
+};
+
+type PrivateUploadTicketPruneRow = {
+  cleaned_pruned?: unknown;
+  finalized_pruned?: unknown;
+  total_pruned?: unknown;
+};
+
+const runPrivateUploadTicketPrune = async (limit = 100) => {
+  const rows = await callSupabaseRpc<PrivateUploadTicketPruneRow[]>(
+    "prune_directsign_private_file_upload_tickets",
+    { p_limit: limit },
+    "private upload ticket metadata prune",
+  );
+  const row = Array.isArray(rows) && rows.length === 1 ? rows[0] : undefined;
+  const cleaned = Number(row?.cleaned_pruned);
+  const finalized = Number(row?.finalized_pruned);
+  const total = Number(row?.total_pruned);
+  if (
+    !Number.isSafeInteger(cleaned) ||
+    cleaned < 0 ||
+    !Number.isSafeInteger(finalized) ||
+    finalized < 0 ||
+    !Number.isSafeInteger(total) ||
+    total < 0 ||
+    total > limit ||
+    cleaned + finalized !== total
+  ) {
+    throw new Error("Invalid private upload ticket prune result");
+  }
+  return { cleaned, finalized, total };
 };
 
 type CampaignEligibilityFailure = {
@@ -20152,6 +21868,263 @@ const decodeNaverInfluencerSelfAttestationChallenge = (
   } catch {
     return undefined;
   }
+};
+
+const exchangeSupabasePasswordRecoveryCode = async ({
+  authCode,
+  codeVerifier,
+}: {
+  authCode: string;
+  codeVerifier: string;
+}) => {
+  const response = await fetch(supabaseAuthUrl("/token?grant_type=pkce"), {
+    method: "POST",
+    headers: supabaseAuthHeaders(),
+    signal: createSupabaseTimeoutSignal(),
+    body: JSON.stringify({
+      auth_code: authCode,
+      code_verifier: codeVerifier,
+    }),
+  });
+  if (!response.ok) {
+    throw new SupabaseAuthUserVerificationError(
+      "Password recovery proof is invalid or expired",
+      response.status,
+    );
+  }
+  return (await response.json()) as SupabaseAuthSession;
+};
+
+const verifySupabasePasswordRecoveryAccessToken = async (
+  accessTokenValue: string,
+  expectedUserId?: string,
+) => {
+  const accessToken = normalizeRequiredText(accessTokenValue);
+  const claims = decodeSupabaseAccessTokenClaims(accessToken);
+  const user = accessToken
+    ? await fetchSupabaseAuthUser(accessToken)
+    : undefined;
+  const nowSeconds = Math.floor(Date.now() / 1_000);
+  const recoveryAuthenticatedAt = claims?.amr
+    ?.filter((entry) => entry.method?.toLowerCase() === "recovery")
+    .map((entry) => Number(entry.timestamp))
+    .filter(Number.isFinite)
+    .sort((left, right) => right - left)[0];
+  const hasAuthenticatedAudience = Array.isArray(claims?.aud)
+    ? claims.aud.includes("authenticated")
+    : claims?.aud === "authenticated";
+
+  if (
+    !accessToken ||
+    !user ||
+    !isUuidText(user.id) ||
+    (expectedUserId !== undefined && expectedUserId !== user.id) ||
+    claims?.sub !== user.id ||
+    !isUuidText(claims.session_id) ||
+    claims.role !== "authenticated" ||
+    !hasAuthenticatedAudience ||
+    claims.is_anonymous === true ||
+    !Number.isFinite(claims.iat) ||
+    !Number.isFinite(claims.exp) ||
+    claims.exp! <= nowSeconds ||
+    claims.iat! > nowSeconds + 60 ||
+    claims.iat! < nowSeconds - passwordResetPkceMaxAgeSeconds ||
+    !Number.isFinite(recoveryAuthenticatedAt) ||
+    recoveryAuthenticatedAt! > nowSeconds + 60 ||
+    recoveryAuthenticatedAt! < nowSeconds - passwordResetPkceMaxAgeSeconds
+  ) {
+    throw new SupabaseAuthUserVerificationError(
+      "Password recovery authentication is required",
+      401,
+      "RESET_RECOVERY_REQUIRED",
+    );
+  }
+
+  return { accessToken, claims, user };
+};
+
+const verifySupabasePasswordRecoverySession = async (
+  session: SupabaseAuthSession,
+) =>
+  verifySupabasePasswordRecoveryAccessToken(
+    session.access_token,
+    session.user?.id,
+  );
+
+type PasswordResetPkceStatePayload = {
+  version: 1;
+  code_verifier: string;
+  nonce: string;
+  role?: UserSessionBrowserRole;
+  issued_at: number;
+  expires_at: number;
+};
+
+type PasswordResetRecoveryCookiePayload = {
+  version: 1 | 2;
+  access_token: string;
+  user_id: string;
+  session_id: string;
+  reset_id?: string;
+  nonce: string;
+  role?: UserSessionBrowserRole;
+  issued_at: number;
+  expires_at: number;
+};
+
+const getPasswordResetPkceCipherKey = () =>
+  createHash("sha256")
+    .update(`password-reset-pkce:v1:${shareTokenEncryptionSecret}`)
+    .digest();
+
+const encryptPasswordResetPayload = (
+  prefix: string,
+  payload: PasswordResetPkceStatePayload | PasswordResetRecoveryCookiePayload,
+) => {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", getPasswordResetPkceCipherKey(), iv);
+  cipher.setAAD(Buffer.from(prefix, "utf8"));
+  const ciphertext = Buffer.concat([
+    cipher.update(JSON.stringify(payload), "utf8"),
+    cipher.final(),
+  ]);
+  return `${prefix}${Buffer.concat([
+    iv,
+    cipher.getAuthTag(),
+    ciphertext,
+  ]).toString("base64url")}`;
+};
+
+const decryptPasswordResetPayload = (
+  value: string | undefined,
+  prefix: string,
+): Record<string, unknown> | undefined => {
+  if (
+    !value ||
+    value.length > 4_096 ||
+    !value.startsWith(prefix)
+  ) {
+    return undefined;
+  }
+  try {
+    const encrypted = Buffer.from(value.slice(prefix.length), "base64url");
+    if (encrypted.byteLength < 29) return undefined;
+    const iv = encrypted.subarray(0, 12);
+    const authTag = encrypted.subarray(12, 28);
+    const ciphertext = encrypted.subarray(28);
+    const decipher = createDecipheriv(
+      "aes-256-gcm",
+      getPasswordResetPkceCipherKey(),
+      iv,
+    );
+    decipher.setAAD(Buffer.from(prefix, "utf8"));
+    decipher.setAuthTag(authTag);
+    const payload = JSON.parse(
+      Buffer.concat([
+        decipher.update(ciphertext),
+        decipher.final(),
+      ]).toString("utf8"),
+    ) as unknown;
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      return undefined;
+    }
+    return payload as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+};
+
+const decryptPasswordResetPkceState = (value: string | undefined) => {
+  const payload = decryptPasswordResetPayload(
+    value,
+    passwordResetStateCipherPrefix,
+  ) as Partial<PasswordResetPkceStatePayload> | undefined;
+  if (!payload) return undefined;
+  const now = Date.now();
+  if (
+    payload.version !== 1 ||
+    !hasText(payload.code_verifier) ||
+    !/^[A-Za-z0-9_-]{43,128}$/.test(payload.code_verifier!) ||
+    !hasText(payload.nonce) ||
+    !/^[A-Za-z0-9_-]{32,128}$/.test(payload.nonce!) ||
+    (payload.role !== undefined &&
+      payload.role !== "advertiser" &&
+      payload.role !== "influencer") ||
+    !Number.isFinite(payload.issued_at) ||
+    !Number.isFinite(payload.expires_at) ||
+    payload.issued_at! > now + 60_000 ||
+    payload.expires_at! <= now ||
+    payload.expires_at! - payload.issued_at! >
+      passwordResetPkceMaxAgeSeconds * 1_000
+  ) {
+    return undefined;
+  }
+  return payload as PasswordResetPkceStatePayload;
+};
+
+const decryptPasswordResetRecoveryCookie = (value: string | undefined) => {
+  const payload = decryptPasswordResetPayload(
+    value,
+    passwordResetPendingCipherPrefix,
+  ) as Partial<PasswordResetRecoveryCookiePayload> | undefined;
+  if (!payload) return undefined;
+    const now = Date.now();
+    if (
+      (payload.version !== 1 && payload.version !== 2) ||
+      !hasText(payload.access_token) ||
+      payload.access_token!.length > 3_000 ||
+      !isUuidText(payload.user_id) ||
+      !isUuidText(payload.session_id) ||
+      (payload.version === 2 && !isUuidText(payload.reset_id)) ||
+      !hasText(payload.nonce) ||
+      !/^[A-Za-z0-9_-]{32,128}$/.test(payload.nonce!) ||
+      (payload.role !== undefined &&
+        payload.role !== "advertiser" &&
+        payload.role !== "influencer") ||
+      !Number.isFinite(payload.issued_at) ||
+      !Number.isFinite(payload.expires_at) ||
+      payload.issued_at! > now + 60_000 ||
+      payload.expires_at! <= now ||
+      payload.expires_at! - payload.issued_at! >
+        passwordResetPkceMaxAgeSeconds * 1_000
+    ) {
+      return undefined;
+    }
+    return payload as PasswordResetRecoveryCookiePayload;
+};
+
+const getPasswordResetOperationId = (pending: PasswordResetRecoveryCookiePayload) => {
+  if (isUuidText(pending.reset_id)) return pending.reset_id;
+  const hex = createHmac("sha256", shareTokenEncryptionSecret)
+    .update(`password-reset-operation:${pending.nonce}:${pending.session_id}`)
+    .digest("hex")
+    .slice(0, 32);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(
+    16,
+    20,
+  )}-${hex.slice(20)}`;
+};
+
+const createPasswordResetPkceState = (role: string) => {
+  const codeVerifier = randomBytes(32).toString("base64url");
+  const issuedAt = Date.now();
+  const payload: PasswordResetPkceStatePayload = {
+    version: 1,
+    code_verifier: codeVerifier,
+    nonce: randomBytes(32).toString("base64url"),
+    ...(role === "advertiser" || role === "influencer" ? { role } : {}),
+    issued_at: issuedAt,
+    expires_at: issuedAt + passwordResetPkceMaxAgeSeconds * 1_000,
+  };
+  return {
+    state: encryptPasswordResetPayload(
+      passwordResetStateCipherPrefix,
+      payload,
+    ),
+    codeChallenge: createHash("sha256")
+      .update(codeVerifier)
+      .digest("base64url"),
+  };
 };
 
 const readNaverInfluencerAttestationSubmission = (body: Record<string, unknown>) => {
@@ -23026,134 +24999,22 @@ const jsonEqual = (left: unknown, right: unknown) =>
 
 const verifyInfluencerContractWriteAccess = (
   existing: Contract | undefined,
-  incoming: Contract,
+  _incoming: Contract,
 ) => {
-  if (!existing) {
-    return "Influencer cannot create contracts";
-  }
+  if (!existing) return "Influencer cannot create contracts";
+  return "Influencer contract changes must use a dedicated server endpoint";
+};
 
-  if (incoming.status === "DRAFT") {
-    return "Influencer cannot revoke shared contracts";
-  }
-
-  if (incoming.status === "SIGNED") {
-    return "Influencer signatures must be submitted through the signing endpoint";
-  }
-
-  if (isFixedCampaignContract(existing)) {
-    if (incoming.status === "NEGOTIATING") {
-      return "Campaign recruitment contracts cannot enter negotiation";
-    }
-
-    if (
-      incoming.clauses.some(
-        (clause) =>
-          clause.status === "MODIFICATION_REQUESTED" ||
-          clause.status === "DELETION_REQUESTED",
-      )
-    ) {
-      return "Campaign recruitment terms are fixed and cannot be modified by request";
-    }
-
-    const appendedEvents = (incoming.audit_events ?? []).slice(
-      existing?.audit_events?.length ?? 0,
-    );
-    if (
-      appendedEvents.some(
-        (event) =>
-          event.action.includes("수정") ||
-          event.action.includes("삭제") ||
-          event.description.includes("수정") ||
-          event.description.includes("삭제"),
-      )
-    ) {
-      return "Campaign recruitment contracts only allow term confirmation, not negotiation";
-    }
-  }
-
-  if (incoming.advertiser_id !== existing.advertiser_id) {
-    return "Advertiser ownership cannot be changed";
-  }
-
-  if (incoming.title !== existing.title || incoming.type !== existing.type) {
-    return "Contract summary cannot be changed by influencer";
-  }
-
-  if (!jsonEqual(incoming.advertiser_info, existing.advertiser_info)) {
-    return "Advertiser information cannot be changed by influencer";
-  }
-
-  if (!jsonEqual(incoming.advertiser_trust, existing.advertiser_trust)) {
-    return "Advertiser trust metadata cannot be changed by influencer";
-  }
-
-  if (!jsonEqual(incoming.influencer_info, existing.influencer_info)) {
-    return "Influencer identity cannot be changed through contract review";
-  }
-
-  if (!jsonEqual(incoming.campaign, existing.campaign)) {
-    return "Campaign terms cannot be changed by influencer";
-  }
-
-  if (!jsonEqual(incoming.signature_data, existing.signature_data)) {
-    return "Signature data must be submitted through the signing endpoint";
-  }
-
-  if (incoming.pdf_url !== existing.pdf_url) {
-    return "PDF evidence cannot be changed by influencer";
-  }
-
-  if (incoming.clauses.length !== existing.clauses.length) {
-    return "Contract clauses cannot be added or removed by influencer";
-  }
-
-  for (const existingClause of existing.clauses) {
-    const incomingClause = incoming.clauses.find(
-      (clause) => clause.clause_id === existingClause.clause_id,
-    );
-
-    if (!incomingClause) {
-      return "Contract clauses cannot be removed by influencer";
-    }
-
-    if (
-      incomingClause.category !== existingClause.category ||
-      incomingClause.content !== existingClause.content
-    ) {
-      return "Clause text cannot be changed by influencer";
-    }
-  }
-
-  const existingAuditEvents = existing.audit_events ?? [];
-  const incomingAuditEvents = incoming.audit_events ?? [];
-
-  if (incomingAuditEvents.length < existingAuditEvents.length) {
-    return "Audit events cannot be removed";
-  }
-
-  for (let index = 0; index < existingAuditEvents.length; index += 1) {
-    if (!jsonEqual(incomingAuditEvents[index], existingAuditEvents[index])) {
-      return "Audit history cannot be rewritten";
-    }
-  }
-
-  const appendedEvents = incomingAuditEvents.slice(existingAuditEvents.length);
-
-  if (appendedEvents.some((event) => event.actor !== "influencer")) {
-    return "Influencer review can only append influencer audit events";
-  }
-
-  const expectedToken = existing.evidence?.share_token;
-
-  if (incoming.evidence?.share_token && incoming.evidence.share_token !== expectedToken) {
-    return "Share token cannot be changed by influencer";
-  }
-
-  if (!jsonEqual(incoming.evidence, existing.evidence)) {
-    return "Contract evidence cannot be changed by influencer";
-  }
-
-  return undefined;
+const advertiserContractStatusTransitions: Record<
+  Contract["status"],
+  ReadonlySet<Contract["status"]>
+> = {
+  DRAFT: new Set(["DRAFT", "REVIEWING", "APPROVED"]),
+  REVIEWING: new Set(["DRAFT", "REVIEWING", "NEGOTIATING", "APPROVED"]),
+  NEGOTIATING: new Set(["DRAFT", "NEGOTIATING", "APPROVED"]),
+  APPROVED: new Set(["DRAFT", "APPROVED"]),
+  SIGNED: new Set(),
+  CLOSED: new Set(),
 };
 
 const verifyAdvertiserContractWriteAccess = (
@@ -23164,8 +25025,57 @@ const verifyAdvertiserContractWriteAccess = (
     if (incoming.status === "SIGNED" || incoming.signature_data || incoming.pdf_url) {
       return "Signatures and signed PDFs must be created through the signing endpoint";
     }
+    if (incoming.status === "CLOSED") {
+      return "Closed status must be created through the contract close endpoint";
+    }
+    if (
+      incoming.status === "APPROVED" &&
+      !incoming.clauses.every((clause) => clause.status === "APPROVED")
+    ) {
+      return "All clauses must be approved before the contract can be finalized";
+    }
 
     return undefined;
+  }
+
+  if (incoming.advertiser_id !== existing.advertiser_id) {
+    return "Advertiser ownership cannot be changed";
+  }
+
+  if (existing.status === "SIGNED" || existing.status === "CLOSED") {
+    if (jsonEqual(incoming, existing)) return undefined;
+    return existing.status === "SIGNED"
+      ? "Signed contracts cannot be modified"
+      : "Closed contracts cannot be modified";
+  }
+
+  if (!advertiserContractStatusTransitions[existing.status].has(incoming.status)) {
+    return `Contract status cannot move from ${existing.status} to ${incoming.status}`;
+  }
+
+  if (
+    incoming.status === "APPROVED" &&
+    !incoming.clauses.every((clause) => clause.status === "APPROVED")
+  ) {
+    return "All clauses must be approved before the contract can be finalized";
+  }
+
+  if (existing.status === "APPROVED") {
+    if (incoming.status === "DRAFT" && isFixedCampaignContract(existing)) {
+      return "Campaign recruitment contracts cannot return to an editable draft";
+    }
+    if (!hasSameContractDocument(existing, incoming, signatureConsentVersion)) {
+      return "Approved contract terms are locked; return to draft before editing";
+    }
+    if (!jsonEqual(incoming.clauses, existing.clauses)) {
+      return "Approved contract clause decisions and history are locked";
+    }
+    if (
+      incoming.status === "DRAFT" &&
+      incoming.evidence?.share_token_status === "active"
+    ) {
+      return "Returning to draft must revoke the active signing link";
+    }
   }
 
   if (isFixedCampaignContract(existing)) {
@@ -23194,11 +25104,11 @@ const verifyAdvertiserContractWriteAccess = (
     }
   }
 
-  if (incoming.status === "SIGNED" && existing.status !== "SIGNED") {
+  if (incoming.status === "SIGNED") {
     return "Signed status must be created through the signing endpoint";
   }
 
-  if (incoming.status === "CLOSED" && existing.status !== "CLOSED") {
+  if (incoming.status === "CLOSED") {
     return "Closed status must be created through the contract close endpoint";
   }
 
@@ -23208,6 +25118,39 @@ const verifyAdvertiserContractWriteAccess = (
 
   if (incoming.pdf_url !== existing.pdf_url) {
     return "Signed PDF URL must be created through the signing endpoint";
+  }
+
+  for (const incomingClause of incoming.clauses) {
+    const existingClause = existing.clauses.find(
+      (clause) => clause.clause_id === incomingClause.clause_id,
+    );
+    if (!existingClause) {
+      if (incomingClause.history.length > 0) {
+        return "New clause history must be created by the server";
+      }
+      continue;
+    }
+
+    if (incomingClause.history.length < existingClause.history.length) {
+      return "Clause history cannot be removed";
+    }
+    for (let index = 0; index < existingClause.history.length; index += 1) {
+      if (!jsonEqual(incomingClause.history[index], existingClause.history[index])) {
+        return "Clause history cannot be rewritten";
+      }
+    }
+    const appendedHistory = incomingClause.history.slice(
+      existingClause.history.length,
+    );
+    if (appendedHistory.length > 1) {
+      return "Only one clause decision can be recorded at a time";
+    }
+    if (
+      appendedHistory.length > 0 &&
+      incomingClause.status === existingClause.status
+    ) {
+      return "Clause history requires a matching clause status change";
+    }
   }
 
   const existingAuditEvents = existing.audit_events ?? [];
@@ -23229,34 +25172,6 @@ const verifyAdvertiserContractWriteAccess = (
     return "Advertiser writes can only append advertiser audit events";
   }
 
-  if (existing.status === "SIGNED") {
-    if (incoming.status !== existing.status) {
-      return "Signed contracts cannot be reopened";
-    }
-
-    if (!jsonEqual(incomingAuditEvents, existingAuditEvents)) {
-      return "Signed contract audit history is locked";
-    }
-
-    if (!jsonEqual(incoming, existing)) {
-      return "Signed contracts cannot be modified";
-    }
-  }
-
-  if (existing.status === "CLOSED") {
-    if (incoming.status !== existing.status) {
-      return "Closed contracts cannot be reopened";
-    }
-
-    if (!jsonEqual(incomingAuditEvents, existingAuditEvents)) {
-      return "Closed contract audit history is locked";
-    }
-
-    if (!jsonEqual(incoming, existing)) {
-      return "Closed contracts cannot be modified";
-    }
-  }
-
   return undefined;
 };
 
@@ -23264,28 +25179,9 @@ const verifyInfluencerShareAccess = (
   request: express.Request,
   existing: Contract,
 ) => {
-  const expectedToken = existing.evidence?.share_token;
-  const providedToken =
-    request.header("X-Yeollock-Share-Token") ??
-    request.header("X-DirectSign-Share-Token") ??
-    normalizeOptionalText(request.query.token);
-
-  if (
-    existing.evidence?.share_token_status !== "active" ||
-    !hasText(expectedToken) ||
-    providedToken !== expectedToken
-  ) {
-    return "Valid share token is required";
-  }
-
-  if (
-    existing.evidence.share_token_expires_at &&
-    new Date(existing.evidence.share_token_expires_at).getTime() < Date.now()
-  ) {
-    return "Share token has expired";
-  }
-
-  return undefined;
+  return hasContractShareCookieAccess(request, existing)
+    ? undefined
+    : "Valid share session is required";
 };
 
 const normalizeVerificationRequest = (
@@ -24310,6 +26206,28 @@ const appendVerificationEvidenceAccessAudit = async (
   request: express.Request,
   admin: AdminSession,
 ) => {
+  const actorName = normalizeOptionalText(admin.profile.name) ?? "unknown";
+  const clientIp = getClientIp(request);
+  const userAgent = request.header("user-agent") ?? "unknown";
+
+  if (useSupabase) {
+    const eventId = await callSupabaseRpc<string>(
+      "record_verification_evidence_access",
+      {
+        p_request_id: record.id,
+        p_actor_profile_id: admin.profile.id,
+        p_actor_name: actorName,
+        p_ip: clientIp,
+        p_user_agent: userAgent,
+      },
+      "verification evidence access audit",
+    );
+    if (!isUuidText(eventId)) {
+      throw new Error("Verification evidence access audit was not persisted");
+    }
+    return;
+  }
+
   const existingAudit = Array.isArray(
     record.evidence_snapshot_json?.evidence_access_audit,
   )
@@ -24320,9 +26238,9 @@ const appendVerificationEvidenceAccessAudit = async (
     action: "evidence_downloaded",
     actor_role: "admin",
     actor_profile_id: admin.profile.id,
-    actor_name: admin.profile.name,
-    ip: getClientIp(request),
-    user_agent: request.header("user-agent") ?? "unknown",
+    actor_name: actorName,
+    ip: clientIp,
+    user_agent: userAgent,
     created_at: new Date().toISOString(),
   };
   const evidenceSnapshot = {
@@ -24330,19 +26248,6 @@ const appendVerificationEvidenceAccessAudit = async (
     evidence_access_audit: [...existingAudit.slice(-49), auditEvent],
   };
   const updatedAt = new Date().toISOString();
-
-  if (useSupabase) {
-    await patchSupabaseRecord(
-      "verification_requests",
-      `?id=eq.${encodeURIComponent(record.id)}`,
-      {
-        evidence_snapshot_json: evidenceSnapshot,
-        updated_at: updatedAt,
-      },
-      "Supabase verification evidence access audit",
-    );
-    return;
-  }
 
   const records = await readVerificationRequests();
   await writeVerificationRequests(
@@ -24521,23 +26426,297 @@ const insertVerificationRequest = async (record: VerificationRequestRecord) => {
   return normalizedRecord;
 };
 
+type TicketedVerificationInsertRpcRow = {
+  outcome?: unknown;
+  verification_request?: unknown;
+};
+
+const insertVerificationRequestFromUploadTicket = async ({
+  record,
+  uploadTicketId,
+  actorProfileId,
+  purpose,
+}: {
+  record: VerificationRequestRecord;
+  uploadTicketId: string;
+  actorProfileId: string;
+  purpose: Extract<
+    PrivateFileUploadPurpose,
+    "advertiser_verification" | "influencer_verification"
+  >;
+}) => {
+  const normalizedRecord = normalizeVerificationRequest(record);
+  const payload = await callSupabaseRpc<
+    TicketedVerificationInsertRpcRow[] | TicketedVerificationInsertRpcRow
+  >(
+    "insert_directsign_verification_request_from_ticket",
+    {
+      p_upload_ticket_id: uploadTicketId,
+      p_actor_profile_id: actorProfileId,
+      p_purpose: purpose,
+      p_record: normalizedRecord,
+    },
+    "ticketed verification insert",
+  );
+  const result = Array.isArray(payload) ? payload[0] : payload;
+  const outcome = normalizeOptionalText(result?.outcome);
+  if (outcome === "upload_ticket_expired") {
+    throw new PrivateFileUploadHttpError(
+      409,
+      "UPLOAD_TICKET_EXPIRED",
+      "Upload ticket has expired",
+    );
+  }
+  if (outcome === "upload_ticket_invalid") {
+    throw new PrivateFileUploadHttpError(
+      409,
+      "UPLOAD_TICKET_INVALID",
+      "Upload ticket is invalid",
+    );
+  }
+  if (
+    (outcome !== "inserted" && outcome !== "idempotent") ||
+    !result?.verification_request ||
+    typeof result.verification_request !== "object"
+  ) {
+    throw new Error("Ticketed verification insert returned an invalid result");
+  }
+  const persisted = normalizeVerificationRequest(
+    result.verification_request as VerificationRequestRecord,
+  );
+  const expectedFile = parseStoredPrivateFile(
+    normalizedRecord.evidence_snapshot_json?.evidence_file,
+  );
+  if (
+    !expectedFile ||
+    persisted.id !== normalizedRecord.id ||
+    persisted.profile_id !== actorProfileId ||
+    !hasExactVerificationEvidenceFile(persisted, expectedFile)
+  ) {
+    throw new Error("Ticketed verification insert reconciliation is invalid");
+  }
+  invalidateSupabaseVerificationRequestCache();
+  invalidateAdvertiserDashboardCache();
+  invalidateInfluencerDashboardCache();
+  if (outcome === "inserted") {
+    if (
+      shouldInvalidateApprovedPlatformChannelCache(
+        persisted,
+        isOperationalTestVerificationRequest(persisted),
+      )
+    ) {
+      await clearPublicMarketplaceCache();
+    }
+    await applyVerificationStatusSideEffects(persisted);
+    await enqueueVerificationOperationalAlert(persisted);
+  }
+  return { record: persisted, idempotent: outcome === "idempotent" };
+};
+
+const readVerificationRequestByIdForEvidenceReconciliation = async (
+  requestId: string,
+) => {
+  if (useSupabase) {
+    const rows = await readSupabaseRows<VerificationRequestRecord>(
+      "verification_requests",
+      `?select=*&id=eq.${encodeURIComponent(requestId)}&limit=2`,
+      "verification evidence reconciliation",
+    );
+    if (rows.length > 1) {
+      throw new Error("Verification evidence reconciliation returned duplicate rows");
+    }
+    return rows[0] ? normalizeVerificationRequest(rows[0]) : undefined;
+  }
+
+  try {
+    const contents = await fs.readFile(verificationDataFile, "utf8");
+    const parsed = JSON.parse(contents) as VerificationStoreFile;
+    if (!Array.isArray(parsed.verification_requests)) {
+      throw new Error("Invalid verification store during evidence reconciliation");
+    }
+    const record = parsed.verification_requests.find(
+      (candidate) => candidate.id === requestId,
+    );
+    return record ? normalizeVerificationRequest(record) : undefined;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+};
+
+const reconcileTicketedVerificationPersistence = async ({
+  requestId,
+  actorProfileId,
+  purpose,
+  pendingFile,
+}: {
+  requestId: string;
+  actorProfileId: string;
+  purpose: Extract<
+    PrivateFileUploadPurpose,
+    "advertiser_verification" | "influencer_verification"
+  >;
+  pendingFile: StoredPrivateFile;
+}) => {
+  try {
+    const [record, ticket] = await Promise.all([
+      readVerificationRequestByIdForEvidenceReconciliation(requestId),
+      readPrivateFileUploadTicket({
+        ticketId: requestId,
+        actorProfileId,
+        purpose,
+        resourceId: requestId,
+      }),
+    ]);
+    if (
+      record &&
+      ticket.state === "finalized" &&
+      hasExactVerificationEvidenceFile(record, pendingFile)
+    ) {
+      return { state: "committed" as const, record };
+    }
+    if (record) {
+      await reportVerificationEvidenceReconciliationFailure({
+        requestId,
+        pendingFile,
+        reason: "lookup_ambiguous",
+        error: new Error("Ticketed verification reference mismatch"),
+        recordPresent: true,
+      }).catch(() => undefined);
+      return { state: "retained" as const };
+    }
+    return { state: "pending" as const };
+  } catch (error) {
+    await reportVerificationEvidenceReconciliationFailure({
+      requestId,
+      pendingFile,
+      reason: "lookup_ambiguous",
+      error,
+      recordPresent: false,
+    }).catch(() => undefined);
+    return { state: "retained" as const };
+  }
+};
+
+const reportVerificationEvidenceReconciliationFailure = async ({
+  requestId,
+  pendingFile,
+  reason,
+  error,
+  recordPresent,
+}: {
+  requestId: string;
+  pendingFile: StoredPrivateFile;
+  reason: VerificationEvidenceReconciliationAlertReason;
+  error: unknown;
+  recordPresent: boolean;
+}) => {
+  console.error(
+    `[${productName}] URGENT verification evidence retained for reconciliation (${reason}; request=${requestId})`,
+  );
+  await enqueueOperationalAlert({
+    kind: "verification_request",
+    action: "provider_degraded",
+    severity: "urgent",
+    subject_type: "verification_evidence_storage",
+    subject_id: requestId,
+    title: "Verification evidence storage reconciliation required",
+    body:
+      "A verification evidence object was retained because persistence could not be reconciled safely.",
+    mobile_path: `/admin/mobile?item=verification:${encodeURIComponent(requestId)}`,
+    dashboard_path: "/admin",
+    dedupe_key: `verification_evidence:${requestId}:${reason}`,
+    decision_reason: reason,
+    metadata_json: {
+      reason,
+      record_present: recordPresent,
+      provider: pendingFile.provider,
+      bucket: pendingFile.bucket,
+      storage_path: pendingFile.path,
+      file_hash: pendingFile.sha256,
+      byte_size: pendingFile.byte_size,
+      error: operationalErrorLabel(error),
+    },
+  }).then(() => undefined);
+};
+
+const reconcileStoredVerificationEvidence = async ({
+  requestId,
+  pendingFile,
+}: {
+  requestId: string;
+  pendingFile: StoredPrivateFile;
+}) =>
+  reconcileVerificationEvidencePersistence<VerificationRequestRecord>({
+    pendingFile,
+    readRecord: () =>
+      readVerificationRequestByIdForEvidenceReconciliation(requestId),
+    deletePendingFile: () => deleteStoredPrivateFile(pendingFile),
+    reportUrgent: ({ reason, error, recordPresent }) =>
+      reportVerificationEvidenceReconciliationFailure({
+        requestId,
+        pendingFile,
+        reason,
+        error,
+        recordPresent,
+      }).catch((alertError) => {
+        console.error(
+          `[${productName}] URGENT verification evidence reconciliation alert failed (${operationalErrorLabel(
+            alertError,
+          )}; request=${requestId})`,
+        );
+      }),
+  });
+
+type VerificationReviewInput = {
+  id: string;
+  status: VerificationStatus;
+  reviewerNote?: string;
+  reviewedByProfileId: string;
+  reviewedByName?: string;
+};
+
+const verificationReviewLocks = new Map<string, Promise<void>>();
+
+const withVerificationReviewLock = async <T>(
+  requestId: string,
+  operation: () => Promise<T>,
+) => {
+  const previous = verificationReviewLocks.get(requestId) ?? Promise.resolve();
+  let release = () => {};
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const tail = previous.then(() => current);
+  verificationReviewLocks.set(requestId, tail);
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+    if (verificationReviewLocks.get(requestId) === tail) {
+      verificationReviewLocks.delete(requestId);
+    }
+  }
+};
+
 const updateVerificationRequestReview = async ({
   id,
   status,
   reviewerNote,
   reviewedByProfileId,
   reviewedByName,
-}: {
-  id: string;
-  status: VerificationStatus;
-  reviewerNote?: string;
-  reviewedByProfileId: string;
-  reviewedByName?: string;
-}) => {
+}: VerificationReviewInput) => {
   const reviewedAt = new Date().toISOString();
   const verificationRequests = await readVerificationRequests();
   const existingRecord = verificationRequests.find((record) => record.id === id);
   if (!existingRecord) return undefined;
+  if (
+    existingRecord.status !== "pending" ||
+    (status !== "approved" && status !== "rejected")
+  ) {
+    return undefined;
+  }
   const isInstagramDmTerminalReview =
     existingRecord.ownership_verification_method === "instagram_dm_code" &&
     (status === "approved" || status === "rejected");
@@ -24613,11 +26792,6 @@ const updateVerificationRequestReview = async ({
             readVerifiedInstagramDmFollowerCount(
               updatedRecord,
               isOperationalTestVerificationRequest(updatedRecord),
-            ) !== undefined) ||
-          (existingRecord.status === "approved" &&
-            readVerifiedInstagramDmFollowerCount(
-              existingRecord,
-              isOperationalTestVerificationRequest(existingRecord),
             ) !== undefined)
         ) {
           await clearPublicMarketplaceCache();
@@ -24629,9 +26803,9 @@ const updateVerificationRequestReview = async ({
 
     const response = await fetchSupabase(
       "verification_requests",
-      `?id=eq.${encodeURIComponent(id)}${
-        isInstagramDmTerminalReview ? "&status=eq.pending" : ""
-      }`,
+      `?id=eq.${encodeURIComponent(id)}&status=eq.pending&updated_at=eq.${encodeURIComponent(
+        existingRecord.updated_at,
+      )}`,
       {
         method: "PATCH",
         headers: { Prefer: "return=representation" },
@@ -24666,7 +26840,12 @@ const updateVerificationRequestReview = async ({
   let updatedRecord: VerificationRequestRecord | undefined;
   const nextRequests = verificationRequests.map((record) => {
     if (record.id !== id) return record;
-    if (isInstagramDmTerminalReview && record.status !== "pending") return record;
+    if (
+      record.status !== "pending" ||
+      record.updated_at !== existingRecord.updated_at
+    ) {
+      return record;
+    }
     updatedRecord = normalizeVerificationRequest({ ...record, ...updates });
     return updatedRecord;
   });
@@ -24687,6 +26866,11 @@ const updateVerificationRequestReview = async ({
   }
   return updatedRecord;
 };
+
+const reviewVerificationRequestWithLock = (input: VerificationReviewInput) =>
+  withVerificationReviewLock(input.id, () =>
+    updateVerificationRequestReview(input),
+  );
 
 const updateVerificationRequestAutomation = async (
   record: VerificationRequestRecord,
@@ -25488,6 +27672,18 @@ const buildApprovedInfluencerPlatforms = async (
   );
 };
 
+const readLegacyVerificationEvidenceDataUrl = async (requestId: string) => {
+  if (!useSupabase || !isUuidText(requestId)) return undefined;
+  const dataUrl = await callSupabaseRpc<string | null>(
+    "get_verification_legacy_evidence_file",
+    { p_request_id: requestId },
+    "legacy verification evidence read",
+  );
+  return typeof dataUrl === "string" && dataUrl.length > 0
+    ? dataUrl
+    : undefined;
+};
+
 const deriveVerificationStatus = (
   requests: VerificationRequestRecord[],
   fallback?: VerificationStatus | "not_submitted",
@@ -26270,33 +28466,173 @@ const isContractShareRotation = (
     (existing?.evidence?.share_token_status === "active" &&
       !hasUsableContractShareLink(existing)));
 
+const serverAuthorContractClauseHistory = (
+  actor: Exclude<AuditActor, "system">,
+  existing: Contract | undefined,
+  incoming: Contract,
+): Contract => ({
+  ...incoming,
+  clauses: incoming.clauses.map((incomingClause) => {
+    const existingClause = existing?.clauses.find(
+      (clause) => clause.clause_id === incomingClause.clause_id,
+    );
+    if (!existingClause) {
+      return { ...incomingClause, history: [] };
+    }
+    if (incomingClause.status === existingClause.status) {
+      return { ...incomingClause, history: existingClause.history };
+    }
+
+    const clientComment = incomingClause.history
+      .slice(existingClause.history.length)
+      .reverse()
+      .find((entry) => hasText(entry.comment))?.comment.trim().slice(0, 2_000);
+    const action =
+      incomingClause.status === "APPROVED"
+        ? "수락"
+        : incomingClause.status === "MODIFICATION_REQUESTED"
+          ? "대안 제시"
+          : incomingClause.status === "DELETION_REQUESTED"
+            ? "삭제 요청"
+            : "검토 상태 변경";
+
+    return {
+      ...incomingClause,
+      history: [
+        ...existingClause.history,
+        {
+          id: randomUUID(),
+          role: actor,
+          action,
+          comment:
+            clientComment ||
+            `${actor === "advertiser" ? "광고주" : "인플루언서"}가 조항 상태를 변경했습니다.`,
+          timestamp: new Date().toISOString(),
+        },
+      ],
+    };
+  }),
+});
+
 const buildServerAuthoredContract = (
   actor: Exclude<AuditActor, "system">,
   existing: Contract | undefined,
   incoming: Contract,
-  options: { eventId?: string } = {},
+  options: { eventId?: string; finalizeDirectSend?: boolean } = {},
 ) => {
+  const returningApprovedContractToDraft =
+    actor === "advertiser" &&
+    existing?.status === "APPROVED" &&
+    incoming.status === "DRAFT";
+  const resetAt = returningApprovedContractToDraft
+    ? new Date().toISOString()
+    : undefined;
+  const directSendAt = options.finalizeDirectSend
+    ? new Date().toISOString()
+    : undefined;
+  const effectiveIncoming = returningApprovedContractToDraft
+    ? {
+        ...incoming,
+        clauses: incoming.clauses.map((clause) => {
+          const existingClause = existing?.clauses.find(
+            (candidate) => candidate.clause_id === clause.clause_id,
+          );
+          return {
+            ...clause,
+            status: "PENDING_REVIEW" as const,
+            history: [
+              ...(existingClause?.history ?? []),
+              {
+                id: randomUUID(),
+                role: "advertiser" as const,
+                action: "재검토 시작",
+                comment:
+                  "서명 링크를 폐기하고 계약을 초안으로 되돌려 기존 조항 승인을 초기화했습니다.",
+                timestamp: resetAt!,
+              },
+            ],
+          };
+        }),
+      }
+    : options.finalizeDirectSend
+      ? {
+          ...incoming,
+          status: "APPROVED" as const,
+          clauses: incoming.clauses.map((clause) => {
+            const existingClause = existing?.clauses.find(
+              (candidate) => candidate.clause_id === clause.clause_id,
+            );
+            return {
+              ...clause,
+              status: "APPROVED" as const,
+              history: [
+                ...(existingClause?.history ?? []),
+                {
+                  id: randomUUID(),
+                  role: "advertiser" as const,
+                  action: "계약서 확정",
+                  comment:
+                    "광고주가 메시지에서 협의한 최종 계약서를 확정해 서명 요청으로 보냈습니다.",
+                  timestamp: directSendAt!,
+                },
+              ],
+            };
+          }),
+          workflow: {
+            next_actor: "influencer" as const,
+            next_action: "계약서 PDF를 확인하고 서명해 주세요.",
+            due_at: incoming.workflow?.due_at,
+            risk_level: "medium" as const,
+            last_message: "최종 계약서와 서명 링크가 준비되었습니다.",
+          },
+          evidence: {
+            ...incoming.evidence,
+            share_token_status: "active" as const,
+            audit_ready: true,
+            pdf_status: "draft_ready" as const,
+          },
+        }
+    : incoming;
   const preservedAuditEvents = existing?.audit_events ?? [];
-  const incomingAuditEvents = incoming.audit_events ?? [];
-  const hadClientAppendedAudit =
-    incomingAuditEvents.length > preservedAuditEvents.length;
+  const changedClause = existing?.clauses.find((existingClause) => {
+    const incomingClause = effectiveIncoming.clauses.find(
+      (clause) => clause.clause_id === existingClause.clause_id,
+    );
+    return !incomingClause || !jsonEqual(incomingClause, existingClause);
+  }) ?? effectiveIncoming.clauses.find(
+    (incomingClause) =>
+      !existing?.clauses.some(
+        (existingClause) => existingClause.clause_id === incomingClause.clause_id,
+      ),
+  );
+  const contractChanged = existing
+    ? !jsonEqual(effectiveIncoming, existing)
+    : true;
 
   let action = "";
   let description = "";
 
-  if (!existing) {
-    action = incoming.status === "DRAFT" ? "draft_saved" : "contract_created";
+  if (
+    actor === "advertiser" &&
+    isContractSendAttempt(existing, effectiveIncoming)
+  ) {
+    action = "share_link_issued";
+    description = existing
+      ? "광고주 인증 확인 후 계약 공유 링크를 발급했습니다."
+      : "광고주가 최종 계약서를 생성하고 서명 링크를 발급했습니다.";
+  } else if (!existing) {
+    action =
+      effectiveIncoming.status === "DRAFT"
+        ? "draft_saved"
+        : "contract_created";
     description =
-      incoming.status === "DRAFT"
+      effectiveIncoming.status === "DRAFT"
         ? "광고주가 계약 초안을 저장했습니다."
         : "광고주가 계약을 생성했습니다.";
-  } else if (actor === "advertiser" && isContractSendAttempt(existing, incoming)) {
-    action = "share_link_issued";
-    description = "광고주 인증 확인 후 계약 공유 링크를 발급했습니다.";
-  } else if (existing.status !== incoming.status) {
+  } else if (existing.status !== effectiveIncoming.status) {
     action = "contract_status_changed";
-    description = `${actorDisplayName(incoming, actor) ?? actor}가 계약 상태를 ${incoming.status}(으)로 변경했습니다.`;
-  } else if (hadClientAppendedAudit) {
+    description = `${actorDisplayName(effectiveIncoming, actor) ?? actor}가 계약 상태를 ${effectiveIncoming.status}(으)로 변경했습니다.`;
+  } else if (changedClause) {
     action =
       actor === "influencer"
         ? "contract_review_updated"
@@ -26305,11 +28641,14 @@ const buildServerAuthoredContract = (
       actor === "influencer"
         ? "인플루언서가 계약 조항 검토 결과를 제출했습니다."
         : "광고주가 계약 내용을 저장했습니다.";
+  } else if (contractChanged) {
+    action = "contract_updated";
+    description = "광고주가 계약 내용을 저장했습니다.";
   }
 
   if (!action) {
     return {
-      ...incoming,
+      ...effectiveIncoming,
       audit_events: preservedAuditEvents,
     };
   }
@@ -26322,16 +28661,14 @@ const buildServerAuthoredContract = (
     created_at: new Date().toISOString(),
   };
 
-  const relatedClauseId = incomingAuditEvents
-    .slice(preservedAuditEvents.length)
-    .find((event) => hasText(event.related_clause_id))?.related_clause_id;
+  const relatedClauseId = changedClause?.clause_id;
 
   if (relatedClauseId) {
     serverEvent.related_clause_id = relatedClauseId;
   }
 
   return {
-    ...incoming,
+    ...effectiveIncoming,
     audit_events: [...preservedAuditEvents, serverEvent],
   };
 };
@@ -26728,6 +29065,7 @@ const formatDashboardActivityAction = (action: string) => {
     deliverable_approved: "콘텐츠 승인",
     deliverable_changes_requested: "수정 요청",
     deliverable_rejected: "콘텐츠 반려",
+    review_pdf_downloaded: "계약서 PDF 다운로드",
     signed_pdf_downloaded: "서명본 다운로드",
     deliverable_file_downloaded: "콘텐츠 파일 다운로드",
   };
@@ -27816,7 +30154,7 @@ const buildInfluencerDashboardPublicProfile = async (
     };
   }
 
-  const { profiles } = await readMarketplaceInfluencerRows(
+  const { profiles, channels } = await readMarketplaceInfluencerRows(
     `?select=*&owner_profile_id=eq.${encodeURIComponent(profile.id)}&limit=1`,
   );
   const marketplaceProfile = profiles[0];
@@ -27833,9 +30171,24 @@ const buildInfluencerDashboardPublicProfile = async (
     : setupState === "minimal" || marketplaceProfile?.is_published
       ? "minimal"
       : "setup_required";
-  const handle = marketplaceProfile?.is_published
+  const candidateHandle = marketplaceProfile?.is_published
     ? normalizePublicProfileHandle(marketplaceProfile.public_handle)
     : "";
+  const mappedMarketplaceProfile = marketplaceProfile
+    ? mapInfluencerProfileRowToMarketplaceProfile(
+        marketplaceProfile,
+        channels.get(marketplaceProfile.id) ?? [],
+      )
+    : undefined;
+  const handle =
+    marketplaceProfile?.registered_identity_only !== true &&
+    candidateHandle &&
+    (!filterOperationalMarketplaceTestData ||
+      (marketplaceProfile?.data_origin === "production" &&
+        mappedMarketplaceProfile &&
+        !hasOperationalTestMarker(mappedMarketplaceProfile)))
+      ? candidateHandle
+      : "";
   const representativeActivityPageUrl = normalizeMarketplacePublicImageUrl(
     marketplaceProfile?.representative_activity_page_url ??
       profile.activity_page_url,
@@ -28289,6 +30642,35 @@ const buildInfluencerDashboard = async (
   return dashboardPromise;
 };
 
+class ContractVersionConflictError extends Error {
+  constructor() {
+    super("Contract changed while the request was in progress");
+    this.name = "ContractVersionConflictError";
+  }
+}
+
+const contractPersistenceLocks = new Map<string, Promise<void>>();
+
+const withContractPersistenceLock = async <T>(
+  contractId: string,
+  task: () => Promise<T>,
+) => {
+  const previous = contractPersistenceLocks.get(contractId) ?? Promise.resolve();
+  const run = previous.catch(() => undefined).then(task);
+  const tail = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  contractPersistenceLocks.set(contractId, tail);
+  try {
+    return await run;
+  } finally {
+    if (contractPersistenceLocks.get(contractId) === tail) {
+      contractPersistenceLocks.delete(contractId);
+    }
+  }
+};
+
 const writeStore = async (
   store: ContractStoreFile,
   options: ContractWriteOptions = {},
@@ -28311,6 +30693,146 @@ const writeStore = async (
   const tempFile = `${dataFile}.tmp`;
   await fs.writeFile(tempFile, JSON.stringify(store, null, 2), "utf8");
   await fs.rename(tempFile, dataFile);
+};
+
+const writeExistingContractWithCas = async (
+  expected: Contract,
+  updated: Contract,
+  options: ContractWriteOptions = {},
+) => {
+  if (expected.id !== updated.id) throw new ContractVersionConflictError();
+
+  if (useSupabase) {
+    const row = toSupabaseRow(updated);
+    const [normalizedRow] = normalizeRowsForPostgrest([
+      row as unknown as Record<string, unknown>,
+    ]);
+    const query = `?id=eq.${encodeURIComponent(
+      expected.id,
+    )}&updated_at=eq.${encodeURIComponent(
+      expected.updated_at,
+    )}&status=eq.${encodeURIComponent(toLegacySupabaseStatus(expected.status))}`;
+    const patchResponse = await fetchSupabase(supabaseLegacyTable, query, {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(normalizedRow),
+    });
+    await assertSupabaseOk(patchResponse, "Supabase contract compare-and-set");
+    const rows = (await patchResponse.json()) as Array<{ id?: string }>;
+    if (rows.length !== 1 || rows[0]?.id !== expected.id) {
+      throw new ContractVersionConflictError();
+    }
+
+    let projectionSyncPending = false;
+    if (useSupabaseV2) {
+      try {
+        await syncSupabaseV2Contract(updated, options);
+      } catch (error) {
+        projectionSyncPending = true;
+        console.warn(
+          `[${productName}] contract v2 projection sync failed after authoritative legacy commit: ${operationalErrorLabel(
+            error,
+          )}`,
+        );
+        void enqueueOperationalAlert({
+          kind: "auth_health",
+          action: "provider_degraded",
+          severity: "urgent",
+          subject_type: "contract_projection",
+          subject_id: updated.id,
+          title: "계약 보조 데이터 동기화 확인 필요",
+          body: "계약 원본 저장은 완료됐지만 보조 데이터 동기화가 지연되고 있습니다.",
+          mobile_path: "/admin/mobile",
+          dashboard_path: "/admin",
+          dedupe_key: `contract_projection:${updated.id}:${updated.updated_at}`,
+          decision_reason: operationalErrorLabel(error),
+          metadata_json: {
+            contract_id: updated.id,
+            contract_status: updated.status,
+            authoritative_commit_at: updated.updated_at,
+          },
+        }).catch(() => undefined);
+      }
+    }
+    invalidateSupabaseContractStoreCache();
+    invalidateAdvertiserDashboardCache();
+    invalidateInfluencerDashboardCache();
+    return { projectionSyncPending };
+  }
+
+  await withContractPersistenceLock(expected.id, async () => {
+    const currentStore = await readStore();
+    const currentIndex = currentStore.contracts.findIndex(
+      (contract) => contract.id === expected.id,
+    );
+    const current = currentStore.contracts[currentIndex];
+    if (!current || !jsonEqual(current, expected)) {
+      throw new ContractVersionConflictError();
+    }
+    await writeStore(mergeContractIntoStore(currentStore, currentIndex, updated));
+  });
+  return { projectionSyncPending: false };
+};
+
+type AtomicContractCloseResult = {
+  outcome:
+    | "closed"
+    | "deliverables_not_ready"
+    | "version_conflict"
+    | "projection_missing"
+    | "authoritative_record_missing";
+  total: number;
+  submitted: number;
+  approved: number;
+};
+
+const closeContractAtomically = async ({
+  expected,
+  updated,
+  actorProfileId,
+  actorDisplayName,
+  eventId,
+}: {
+  expected: Contract;
+  updated: Contract;
+  actorProfileId: string;
+  actorDisplayName: string;
+  eventId: string;
+}) => {
+  if (!useSupabase || !useSupabaseV2 || !isUuid(expected.id)) {
+    throw new Error("Atomic contract close requires Supabase V2");
+  }
+  const protectedContract = toSupabaseRow(updated).contract;
+  const resultResponse = await fetchSupabase(
+    "rpc/close_directsign_contract_atomically",
+    "",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        p_contract_id: expected.id,
+        p_expected_updated_at: expected.updated_at,
+        p_updated_legacy_contract: protectedContract,
+        p_closed_at: updated.updated_at,
+        p_actor_profile_id: actorProfileId,
+        p_actor_display_name: actorDisplayName,
+        p_event_id: eventId,
+      }),
+    },
+  );
+  await assertSupabaseOk(resultResponse, "Supabase atomic contract close");
+  const payload = (await resultResponse.json()) as
+    | AtomicContractCloseResult[]
+    | AtomicContractCloseResult;
+  const result = Array.isArray(payload) ? payload[0] : payload;
+  if (!result?.outcome) {
+    throw new Error("Atomic contract close returned an invalid result");
+  }
+  if (result.outcome === "closed") {
+    invalidateSupabaseContractStoreCache();
+    invalidateAdvertiserDashboardCache();
+    invalidateInfluencerDashboardCache();
+  }
+  return result;
 };
 
 const readStore = async (): Promise<ContractStoreFile> => {
@@ -28424,15 +30946,6 @@ const mergeContractIntoStore = (
           index === existingIndex ? contract : item,
         )
       : [...store.contracts, contract],
-});
-
-const upsertContractIntoStore = (
-  store: ContractStoreFile,
-  contract: Contract,
-) => ({
-  contracts: store.contracts.some((item) => item.id === contract.id)
-    ? store.contracts.map((item) => (item.id === contract.id ? contract : item))
-    : [...store.contracts, contract],
 });
 
 const submittedDeliverableStatuses = new Set<DeliverableReviewStatus>([
@@ -28724,50 +31237,288 @@ const buildDeliverableResponse = (
   };
 };
 
-const validateDeliverableFile = (
-  file: ReturnType<typeof parseEvidenceFile> | undefined,
+const readDeliverableUploadUsage = async (
+  contractId: string,
+  creatorProfileId: string,
 ) => {
-  if (!file) return undefined;
-  if (!deliverableFileMimeTypes.has(file.type)) {
-    return "Only PDF, PNG, JPG, or WebP proof files are allowed";
-  }
-  if (file.size <= 0 || file.size > maxDeliverableFileSize) {
-    return "Proof file must be 10MB or smaller";
-  }
-  if (!file.data_url.startsWith("data:")) {
-    return "Proof file is invalid";
-  }
-  return undefined;
+  const dayStart = new Date();
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const [deliverables, contractFiles, creatorFiles] = await Promise.all([
+    readSupabaseRows<Pick<SupabaseDeliverableRow, "id">>(
+      "deliverables",
+      `?select=id&contract_id=eq.${encodeURIComponent(
+        contractId,
+      )}&limit=${maxDeliverablesPerContract + 1}`,
+      "deliverable contract quota",
+    ),
+    readSupabaseRows<Pick<SupabaseContractFileRow, "byte_size">>(
+      "contract_files",
+      `?select=byte_size&contract_id=eq.${encodeURIComponent(
+        contractId,
+      )}&related_type=eq.deliverable&limit=1000`,
+      "deliverable contract byte quota",
+    ),
+    readSupabaseRows<Pick<SupabaseContractFileRow, "byte_size">>(
+      "contract_files",
+      `?select=byte_size&uploaded_by_profile_id=eq.${encodeURIComponent(
+        creatorProfileId,
+      )}&related_type=eq.deliverable&created_at=gte.${encodeURIComponent(
+        dayStart.toISOString(),
+      )}&limit=2000`,
+      "deliverable creator daily byte quota",
+    ),
+  ]);
+  const sumBytes = (rows: Array<{ byte_size?: number | string | null }>) =>
+    rows.reduce((total, row) => {
+      const value = Number(row.byte_size ?? 0);
+      return total + (Number.isFinite(value) && value > 0 ? value : 0);
+    }, 0);
+
+  return {
+    deliverableCount: deliverables.length,
+    contractBytes: sumBytes(contractFiles),
+    creatorDailyBytes: sumBytes(creatorFiles),
+  };
 };
 
-const storeDeliverableFile = async ({
+type DeliverableUploadReservationResult = {
+  outcome:
+    | "reserved"
+    | "deliverable_limit"
+    | "storage_limit"
+    | "contract_not_active"
+    | "contract_not_found";
+  deliverable_count: number;
+  contract_bytes: number;
+  creator_daily_bytes: number;
+};
+
+const reserveDeliverableUploadQuota = async ({
+  reservationId,
   contractId,
-  deliverableId,
-  file,
+  creatorProfileId,
+  byteSize,
 }: {
+  reservationId: string;
   contractId: string;
-  deliverableId: string;
-  file: NonNullable<ReturnType<typeof parseEvidenceFile>>;
+  creatorProfileId: string;
+  byteSize: number;
 }) => {
-  const { contentType, buffer } = dataUrlToBuffer(file.data_url);
-
-  if (
-    contentType !== file.type ||
-    !assertDeclaredMimeMatchesContent(contentType, buffer, deliverableFileMimeTypes) ||
-    buffer.byteLength <= 0 ||
-    buffer.byteLength > maxDeliverableFileSize
-  ) {
-    throw new Error("Proof file content is invalid");
+  if (!useSupabaseV2 || !isUuid(contractId) || !isUuid(creatorProfileId)) {
+    throw new Error("Deliverable upload quota reservation requires Supabase V2");
   }
+  const reservationResponse = await fetchSupabase(
+    "rpc/reserve_directsign_deliverable_upload",
+    "",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        p_reservation_id: reservationId,
+        p_contract_id: contractId,
+        p_creator_profile_id: creatorProfileId,
+        p_byte_size: byteSize,
+        p_max_deliverables: maxDeliverablesPerContract,
+        p_max_contract_bytes: maxDeliverableBytesPerContract,
+        p_max_creator_daily_bytes: maxDeliverableBytesPerCreatorPerDay,
+        p_ttl_seconds: 15 * 60,
+      }),
+    },
+  );
+  await assertSupabaseOk(
+    reservationResponse,
+    "Supabase deliverable upload quota reservation",
+  );
+  const payload = (await reservationResponse.json()) as
+    | DeliverableUploadReservationResult[]
+    | DeliverableUploadReservationResult;
+  const result = Array.isArray(payload) ? payload[0] : payload;
+  if (!result?.outcome) {
+    throw new Error("Deliverable upload quota reservation returned an invalid result");
+  }
+  return result;
+};
 
-  return storePrivateBuffer({
-    area: "deliverables",
-    ownerId: contractId,
-    fileId: deliverableId,
-    fileName: file.name,
-    contentType,
-    buffer,
-  });
+const releaseDeliverableUploadQuota = async (reservationId: string) => {
+  await deleteSupabaseV2Rows(
+    "directsign_deliverable_upload_reservations",
+    `?id=eq.${encodeURIComponent(reservationId)}`,
+  );
+};
+
+type AtomicDeliverableMutationResult = {
+  outcome:
+    | "submitted"
+    | "reviewed"
+    | "idempotent"
+    | "version_conflict"
+    | "projection_missing"
+    | "authoritative_record_missing"
+    | "reservation_invalid"
+    | "requirement_invalid"
+    | "deliverable_missing"
+    | "review_conflict"
+    | "upload_ticket_invalid"
+    | "upload_ticket_expired";
+  total: number;
+  submitted: number;
+  approved: number;
+};
+
+const readAtomicDeliverableMutationResult = async (
+  response: globalThis.Response,
+  label: string,
+) => {
+  await assertSupabaseOk(response, label);
+  const payload = (await response.json()) as
+    | AtomicDeliverableMutationResult[]
+    | AtomicDeliverableMutationResult;
+  const result = Array.isArray(payload) ? payload[0] : payload;
+  if (!result?.outcome) {
+    throw new Error(`${label} returned an invalid result`);
+  }
+  return result;
+};
+
+const finalizeDeliverableSubmissionAtomically = async ({
+  contract,
+  deliverableId,
+  requirementId,
+  creatorProfileId,
+  creatorDisplayName,
+  title,
+  url,
+  note,
+  submissionIntentHash,
+  storedFile,
+  uploadTicketId,
+  reservationId,
+  submittedEventId,
+  readyEventId,
+  occurredAt,
+  request,
+}: {
+  contract: Contract;
+  deliverableId: string;
+  requirementId?: string;
+  creatorProfileId: string;
+  creatorDisplayName: string;
+  title: string;
+  url?: string;
+  note?: string;
+  submissionIntentHash: string;
+  storedFile?: StoredPrivateFile;
+  uploadTicketId?: string;
+  reservationId: string;
+  submittedEventId: string;
+  readyEventId: string;
+  occurredAt: string;
+  request: express.Request;
+}) => {
+  const clientIp = getClientIp(request);
+  const fileId = storedFile ? randomUUID() : undefined;
+  const rpcResponse = await fetchSupabase(
+    uploadTicketId
+      ? "rpc/finalize_directsign_deliverable_submission_from_ticket"
+      : "rpc/finalize_directsign_deliverable_submission",
+    "",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        ...(uploadTicketId ? { p_upload_ticket_id: uploadTicketId } : {}),
+        p_contract_id: contract.id,
+        p_expected_contract_updated_at: contract.updated_at,
+        p_updated_legacy_contract: toSupabaseRow(contract).contract,
+        p_deliverable_id: deliverableId,
+        p_requirement_id: requirementId ?? null,
+        p_creator_profile_id: creatorProfileId,
+        p_title: title,
+        p_url: url ?? null,
+        p_metadata: {
+          note,
+          submission_intent_hash: submissionIntentHash,
+          proof_file: storedFile,
+          submitted_ip: clientIp,
+          submitted_user_agent: request.header("user-agent") ?? "unknown",
+        },
+        p_file:
+          storedFile && fileId
+            ? {
+                id: fileId,
+                bucket: storedFile.bucket,
+                storage_path: storedFile.path,
+                file_name: storedFile.file_name,
+                content_type: storedFile.content_type,
+                byte_size: storedFile.byte_size,
+                file_hash: storedFile.sha256,
+              }
+            : null,
+        p_reservation_id: reservationId,
+        p_submitted_event_id: submittedEventId,
+        p_ready_event_id: readyEventId,
+        p_actor_display_name: creatorDisplayName,
+        p_event_ip: clientIp === "unknown" ? null : clientIp,
+        p_event_user_agent: request.header("user-agent") ?? null,
+        p_occurred_at: occurredAt,
+      }),
+    },
+  );
+  return readAtomicDeliverableMutationResult(
+    rpcResponse,
+    "Supabase atomic deliverable submission",
+  );
+};
+
+const finalizeDeliverableReviewAtomically = async ({
+  contract,
+  deliverable,
+  status,
+  reviewComment,
+  reviewerProfileId,
+  reviewerDisplayName,
+  reviewEventId,
+  readyEventId,
+  occurredAt,
+  request,
+}: {
+  contract: Contract;
+  deliverable: SupabaseDeliverableRow;
+  status: DeliverableReviewStatus;
+  reviewComment?: string;
+  reviewerProfileId: string;
+  reviewerDisplayName: string;
+  reviewEventId: string;
+  readyEventId: string;
+  occurredAt: string;
+  request: express.Request;
+}) => {
+  const clientIp = getClientIp(request);
+  const rpcResponse = await fetchSupabase(
+    "rpc/finalize_directsign_deliverable_review",
+    "",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        p_contract_id: contract.id,
+        p_expected_contract_updated_at: contract.updated_at,
+        p_updated_legacy_contract: toSupabaseRow(contract).contract,
+        p_deliverable_id: deliverable.id,
+        p_expected_deliverable_updated_at: deliverable.updated_at,
+        p_review_status: status,
+        p_review_comment: reviewComment ?? null,
+        p_reviewer_profile_id: reviewerProfileId,
+        p_reviewer_display_name: reviewerDisplayName,
+        p_review_event_id: reviewEventId,
+        p_ready_event_id: readyEventId,
+        p_event_ip: clientIp === "unknown" ? null : clientIp,
+        p_event_user_agent: request.header("user-agent") ?? null,
+        p_occurred_at: occurredAt,
+      }),
+    },
+  );
+  return readAtomicDeliverableMutationResult(
+    rpcResponse,
+    "Supabase atomic deliverable review",
+  );
 };
 
 const insertContractEvent = async ({
@@ -28819,141 +31570,6 @@ const insertContractEvent = async ({
   }
 
   await insertSupabaseRowsReturning("contract_events", rows, "contract event");
-};
-
-const updateContractDeliverableWorkflow = async (
-  contractId: string,
-  request: express.Request,
-) => {
-  if (!useSupabase || !isUuid(contractId)) return;
-
-  const storedLegacyContract = await readSupabaseLegacyContract(contractId);
-  const legacyContract =
-    storedLegacyContract ?? (await readSupabaseV2ContractAsLegacy(contractId));
-  if (!legacyContract) return;
-
-  const bundle = await readContractDeliverableBundle(legacyContract);
-  const summary = buildDeliverableSummary(bundle.requirements, bundle.deliverables);
-  const hasRevision = bundle.deliverables.some((deliverable) =>
-    ["changes_requested", "rejected"].includes(
-      normalizeDeliverableStatus(deliverable.review_status),
-    ),
-  );
-  const hasPendingReview = bundle.deliverables.some(
-    (deliverable) => normalizeDeliverableStatus(deliverable.review_status) === "submitted",
-  );
-  const completed =
-    summary.total > 0 && summary.approved >= summary.total;
-  const now = new Date().toISOString();
-
-  const workflow =
-    completed
-      ? {
-          next_actor: "advertiser" as const,
-          next_action: "모든 콘텐츠가 승인되었습니다. 광고 계약 마감을 진행하세요.",
-          risk_level: "low" as const,
-          last_message: "모든 필수 콘텐츠가 승인되었습니다.",
-        }
-      : hasPendingReview
-        ? {
-            next_actor: "advertiser" as const,
-            next_action: "제출된 콘텐츠 URL과 파일을 검수하고 승인 또는 수정 요청을 남기세요.",
-            risk_level: "medium" as const,
-            last_message: "광고주 콘텐츠 확인 및 검수가 필요합니다.",
-          }
-        : {
-            next_actor: "influencer" as const,
-            next_action: hasRevision
-              ? "수정 요청된 콘텐츠를 보완한 뒤 URL이나 파일을 다시 제출하세요."
-              : "콘텐츠 URL과 파일을 제출해 광고주 검수를 요청하세요.",
-            risk_level: hasRevision ? ("medium" as const) : ("low" as const),
-            last_message: hasRevision
-              ? "콘텐츠 수정 요청 또는 반려가 있습니다."
-              : "인플루언서 콘텐츠 제출을 기다리는 중입니다.",
-          };
-  const updates = completed
-    ? {
-        status: "active",
-        next_actor_role: "advertiser",
-        next_action: workflow.next_action,
-        next_due_at: null,
-        completed_at: null,
-        updated_at: now,
-      }
-    : hasPendingReview
-      ? {
-          status: "active",
-          next_actor_role: "advertiser",
-          next_action: workflow.next_action,
-          next_due_at: null,
-          completed_at: null,
-          updated_at: now,
-        }
-      : {
-          status: "active",
-          next_actor_role: "influencer",
-          next_action: workflow.next_action,
-        next_due_at: null,
-        completed_at: null,
-        updated_at: now,
-      };
-
-  // Persist the deterministic milestone before the derived contract summary.
-  // If this write fails, the request stays retryable instead of advancing the
-  // workflow without an authoritative Bell source.
-  if (completed) {
-    await insertContractEvent({
-      contractId,
-      actorRole: "system",
-      actorDisplayName: productName,
-      eventType: "deliverables_ready_to_close",
-      targetType: "contract",
-      targetId: contractId,
-      payload: { summary },
-      request,
-      eventId: stableUuid(`${contractId}:event:deliverables_ready_to_close`),
-      ignoreDuplicate: true,
-    });
-  }
-
-  await patchSupabaseRecord(
-    "contracts",
-    `?id=eq.${encodeURIComponent(contractId)}`,
-    updates,
-    "Supabase contract deliverable workflow update",
-  );
-
-  if (storedLegacyContract) {
-    const firstSubmittedUrl = bundle.deliverables.find((deliverable) =>
-      hasText(deliverable.url),
-    )?.url;
-    const updatedLegacyContract = normalizeContract({
-      ...storedLegacyContract,
-      post_link: firstSubmittedUrl ?? storedLegacyContract.post_link,
-      deliverable_summary: {
-        ...summary,
-        updated_at: now,
-      },
-      workflow: {
-        ...(storedLegacyContract.workflow ?? {}),
-        ...workflow,
-      },
-      updated_at: now,
-    });
-
-    await patchSupabaseRecord(
-      supabaseLegacyTable,
-      `?id=eq.${encodeURIComponent(contractId)}`,
-      {
-        contract: updatedLegacyContract,
-        post_link: updatedLegacyContract.post_link ?? null,
-        campaign_name:
-          updatedLegacyContract.campaign_name ?? updatedLegacyContract.title,
-      },
-      "Supabase legacy contract deliverable summary update",
-    );
-  }
-
 };
 
 const resolveInfluencerVerificationContractAccess = async (
@@ -29035,6 +31651,736 @@ const resolveInfluencerVerificationContractAccess = async (
 
   return { ok: false, status: 404, error: "Contract not found" };
 };
+
+const sitePageViewKeySet = new Set<string>(
+  PUBLIC_PAGE_VIEW_PAGES.map((page) => page.key),
+);
+const sitePageViewCounterEnabled =
+  isProductionRuntime || process.env.DIRECTSIGN_ENABLE_LOCAL_PAGE_VIEW_COUNTER === "true";
+const sitePageViewRateLimitWindowMs = 60 * 1000;
+const sitePageViewRateLimitMaxAttempts = 30;
+
+type SitePageViewCountRow = {
+  view_date: string;
+  page_key: string;
+  view_count: number | string;
+};
+
+type SitePageViewMetrics = {
+  available: boolean;
+  today: number;
+  last_7_days: number;
+  by_page: Array<{
+    page_key: PublicPageViewKey;
+    label: string;
+    today: number;
+    last_7_days: number;
+  }>;
+};
+
+const emptySitePageViewMetrics = (): SitePageViewMetrics => ({
+  available: false,
+  today: 0,
+  last_7_days: 0,
+  by_page: [],
+});
+
+const readKoreaDateKey = (date = new Date()) => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+  return `${values.year}-${values.month}-${values.day}`;
+};
+
+const shiftIsoDate = (dateKey: string, days: number) => {
+  const date = new Date(`${dateKey}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+};
+
+const parseSitePageViewKey = (value: unknown): PublicPageViewKey | null => {
+  if (typeof value !== "string" || !sitePageViewKeySet.has(value)) return null;
+  return value as PublicPageViewKey;
+};
+
+const normalizeSitePageViewCount = (value: number | string) => {
+  const count = Number(value);
+  return Number.isFinite(count) && count >= 0 ? Math.floor(count) : 0;
+};
+
+const incrementOwnedSitePageView = async (pageKey: PublicPageViewKey) => {
+  if (!sitePageViewCounterEnabled || !useSupabase) return;
+  await callSupabaseRpc<number | string>(
+    "increment_site_page_view_count",
+    { p_page_key: pageKey },
+    "owned site page view",
+  );
+};
+
+const readOwnedSitePageViewRows = async ({
+  startDateKey,
+  endDateKey,
+  label = "owned site page views",
+}: {
+  startDateKey: string;
+  endDateKey: string;
+  label?: string;
+}): Promise<{ available: boolean; rows: SitePageViewCountRow[] }> => {
+  if (!useSupabase) {
+    return { available: false, rows: [] };
+  }
+
+  try {
+    const rows = await readSupabaseRows<SitePageViewCountRow>(
+      "site_page_view_counts",
+      `?select=view_date,page_key,view_count&view_date=gte.${encodeURIComponent(
+        startDateKey,
+      )}&view_date=lte.${encodeURIComponent(endDateKey)}&order=view_date.asc,page_key.asc`,
+      label,
+    );
+    return {
+      available: true,
+      rows: rows.filter((row) => sitePageViewKeySet.has(row.page_key)),
+    };
+  } catch (error) {
+    console.warn(
+      `[${productName}] ${label} unavailable: ${operationalErrorLabel(error)}`,
+    );
+    return { available: false, rows: [] };
+  }
+};
+
+const readOwnedSitePageViewMetrics = async (): Promise<SitePageViewMetrics> => {
+  if (!useSupabase) {
+    return emptySitePageViewMetrics();
+  }
+
+  const todayKey = readKoreaDateKey();
+  const startDateKey = shiftIsoDate(todayKey, -6);
+  const result = await readOwnedSitePageViewRows({
+    startDateKey,
+    endDateKey: todayKey,
+  });
+  if (!result.available) return emptySitePageViewMetrics();
+
+  try {
+    const rows = result.rows;
+    const byPage = PUBLIC_PAGE_VIEW_PAGES.map((page) => {
+      const pageRows = rows.filter((row) => row.page_key === page.key);
+      const today = pageRows
+        .filter((row) => row.view_date === todayKey)
+        .reduce((total, row) => total + normalizeSitePageViewCount(row.view_count), 0);
+      const last7Days = pageRows.reduce(
+        (total, row) => total + normalizeSitePageViewCount(row.view_count),
+        0,
+      );
+      return {
+        page_key: page.key,
+        label: getPublicPageViewLabel(page.key),
+        today,
+        last_7_days: last7Days,
+      };
+    });
+
+    return {
+      available: true,
+      today: byPage.reduce((total, page) => total + page.today, 0),
+      last_7_days: byPage.reduce((total, page) => total + page.last_7_days, 0),
+      by_page: byPage,
+    };
+  } catch (error) {
+    console.warn(
+      `[${productName}] owned site page view metrics unavailable: ${operationalErrorLabel(
+        error,
+      )}`,
+    );
+    return emptySitePageViewMetrics();
+  }
+};
+
+type OperationalAuthMetricBucketRow = {
+  bucket_minute: string;
+  operation: string;
+  role: string;
+  outcome: string;
+  request_count: number | string;
+  total_latency_ms: number | string;
+  max_latency_ms: number | string;
+};
+
+const authFailureOutcomes = new Set([
+  "rejected",
+  "required",
+  "expired",
+  "invalid",
+  "rate_limited",
+  "provider_error",
+  "storage_error",
+  "unavailable",
+]);
+const authServiceErrorOutcomes = new Set([
+  "provider_error",
+  "storage_error",
+  "unavailable",
+]);
+
+const normalizeAnalyticsNumber = (value: number | string | undefined) => {
+  const numberValue = Number(value ?? 0);
+  return Number.isFinite(numberValue) && numberValue >= 0
+    ? Math.floor(numberValue)
+    : 0;
+};
+
+const koreaDateStartIso = (dateKey: string) =>
+  new Date(`${dateKey}T00:00:00+09:00`).toISOString();
+
+const readOperationalAuthMetricBuckets = async ({
+  startDateKey,
+  endDateKey,
+}: {
+  startDateKey: string;
+  endDateKey: string;
+}): Promise<{ available: boolean; rows: OperationalAuthMetricBucketRow[] }> => {
+  if (!useSupabase) return { available: false, rows: [] };
+
+  try {
+    const rows = await readSupabaseRows<OperationalAuthMetricBucketRow>(
+      "operational_auth_metric_buckets",
+      `?select=bucket_minute,operation,role,outcome,request_count,total_latency_ms,max_latency_ms&bucket_minute=gte.${encodeURIComponent(
+        koreaDateStartIso(startDateKey),
+      )}&bucket_minute=lt.${encodeURIComponent(
+        koreaDateStartIso(shiftIsoDate(endDateKey, 1)),
+      )}&order=bucket_minute.asc`,
+      "operational authentication metrics",
+    );
+    return { available: true, rows };
+  } catch (error) {
+    console.warn(
+      `[${productName}] operational authentication metrics unavailable: ${operationalErrorLabel(
+        error,
+      )}`,
+    );
+    return { available: false, rows: [] };
+  }
+};
+
+const isDateKeyBetween = (dateKey: string, startDateKey: string, endDateKey: string) =>
+  dateKey >= startDateKey && dateKey <= endDateKey;
+
+const readDateKeyFromValue = (value: string | undefined) => {
+  if (!value) return undefined;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? readKoreaDateKey(date) : undefined;
+};
+
+const buildAnalyticsComparison = (current: number, previous: number) => ({
+  current,
+  previous,
+  delta_percent: calculateAnalyticsDeltaPercent(current, previous),
+});
+
+const emptyAdminAnalyticsAuthSummary = (
+  available = false,
+): AdminAnalyticsAuthSummary => ({
+  available,
+  requests: 0,
+  failed_requests: 0,
+  service_errors: 0,
+  failure_rate_percent: null,
+  avg_latency_ms: null,
+  max_latency_ms: null,
+});
+
+const buildAdminAnalyticsAuthSummary = (
+  rows: OperationalAuthMetricBucketRow[],
+  available: boolean,
+): AdminAnalyticsAuthSummary => {
+  if (rows.length === 0) return emptyAdminAnalyticsAuthSummary(available);
+
+  const requests = rows.reduce(
+    (total, row) => total + normalizeAnalyticsNumber(row.request_count),
+    0,
+  );
+  const failedRequests = rows.reduce(
+    (total, row) =>
+      total +
+      (authFailureOutcomes.has(row.outcome)
+        ? normalizeAnalyticsNumber(row.request_count)
+        : 0),
+    0,
+  );
+  const serviceErrors = rows.reduce(
+    (total, row) =>
+      total +
+      (authServiceErrorOutcomes.has(row.outcome)
+        ? normalizeAnalyticsNumber(row.request_count)
+        : 0),
+    0,
+  );
+  const totalLatency = rows.reduce(
+    (total, row) => total + normalizeAnalyticsNumber(row.total_latency_ms),
+    0,
+  );
+  const maxLatency = rows.reduce(
+    (maximum, row) =>
+      Math.max(maximum, normalizeAnalyticsNumber(row.max_latency_ms)),
+    0,
+  );
+
+  return {
+    available,
+    requests,
+    failed_requests: failedRequests,
+    service_errors: serviceErrors,
+    failure_rate_percent:
+      requests > 0 ? Math.round((failedRequests / requests) * 1000) / 10 : null,
+    avg_latency_ms: requests > 0 ? Math.round(totalLatency / requests) : null,
+    max_latency_ms: maxLatency > 0 ? maxLatency : null,
+  };
+};
+
+const buildAdminAnalyticsAuthDaily = (
+  rows: OperationalAuthMetricBucketRow[],
+  dateKeys: string[],
+  available: boolean,
+): AdminAnalyticsAuthDaily[] => {
+  const rowsByDate = new Map<string, OperationalAuthMetricBucketRow[]>();
+  for (const row of rows) {
+    const dateKey = readDateKeyFromValue(row.bucket_minute);
+    if (!dateKey) continue;
+    const bucket = rowsByDate.get(dateKey) ?? [];
+    bucket.push(row);
+    rowsByDate.set(dateKey, bucket);
+  }
+
+  return dateKeys.map((date) => {
+    const summary = buildAdminAnalyticsAuthSummary(
+      rowsByDate.get(date) ?? [],
+      available,
+    );
+    return {
+      date,
+      label: formatAnalyticsDateLabel(date),
+      requests: summary.requests,
+      failed_requests: summary.failed_requests,
+      service_errors: summary.service_errors,
+      avg_latency_ms: summary.avg_latency_ms,
+      max_latency_ms: summary.max_latency_ms,
+    };
+  });
+};
+
+const buildEmptyAdminAnalytics = (
+  days: AdminAnalyticsRangeDays,
+  generatedAt = new Date().toISOString(),
+): AdminAnalyticsResponse => {
+  const endDate = readKoreaDateKey();
+  const startDate = shiftIsoDate(endDate, -(days - 1));
+  const previousEndDate = shiftIsoDate(startDate, -1);
+  const previousStartDate = shiftIsoDate(previousEndDate, -(days - 1));
+  return {
+    generated_at: generatedAt,
+    source: "unavailable",
+    range: {
+      days,
+      start_date: startDate,
+      end_date: endDate,
+      previous_start_date: previousStartDate,
+      previous_end_date: previousEndDate,
+    },
+    overview: {
+      page_views: buildAnalyticsComparison(0, 0),
+      contracts_created: buildAnalyticsComparison(0, 0),
+      support_tickets: buildAnalyticsComparison(0, 0),
+      verification_requests: buildAnalyticsComparison(0, 0),
+      active_contracts: 0,
+    },
+    daily_page_views: buildAnalyticsDateKeys(endDate, days).map((date) => ({
+      date,
+      label: formatAnalyticsDateLabel(date),
+      page_views: 0,
+    })),
+    page_breakdown: PUBLIC_PAGE_VIEW_PAGES.map((page) => ({
+      page_key: page.key,
+      label: getPublicPageViewLabel(page.key),
+      current: 0,
+      previous: 0,
+      delta_percent: null,
+    })),
+    auth_health: {
+      current: emptyAdminAnalyticsAuthSummary(),
+      previous: emptyAdminAnalyticsAuthSummary(),
+      daily: buildAdminAnalyticsAuthDaily([], buildAnalyticsDateKeys(endDate, days), false),
+    },
+    queue: {
+      pending_verification: 0,
+      open_support_tickets: 0,
+      active_support_access: 0,
+      pending_operational_alerts: 0,
+    },
+    system_status: [
+      {
+        key: "operational_data",
+        label: "운영 데이터",
+        status: "unavailable",
+        detail: "운영 데이터 연결이 준비되지 않았습니다.",
+      },
+      {
+        key: "page_views",
+        label: "자체 조회수 집계",
+        status: "unavailable",
+        detail: "운영 환경의 집계 데이터만 표시합니다.",
+      },
+      {
+        key: "auth_metrics",
+        label: "인증 모니터링",
+        status: "unavailable",
+        detail: "생산 인증 지표가 아직 없습니다.",
+      },
+      {
+        key: "alerts",
+        label: "운영 알림",
+        status: "unavailable",
+        detail: "운영 알림 연결이 준비되지 않았습니다.",
+      },
+    ],
+  };
+};
+
+const readAnalyticsOperationalAlerts = async (): Promise<{
+  available: boolean;
+  rows: OperationalAlertRecord[];
+}> => {
+  if (!useSupabase) return { available: false, rows: [] };
+
+  try {
+    const rows = await readSupabaseRows<OperationalAlertRecord>(
+      operationalAlertTable,
+      "?select=*&order=created_at.desc&limit=100",
+      "admin analytics operational alerts",
+    );
+    return {
+      available: true,
+      rows: rows
+        .map(normalizeOperationalAlert)
+        .filter(
+          (alert) =>
+            !hasOperationalTestMarker({
+              subject_id: alert.subject_id,
+              title: alert.title,
+              body: alert.body,
+              metadata_json: alert.metadata_json,
+            }),
+        ),
+    };
+  } catch (error) {
+    console.warn(
+      `[${productName}] admin analytics operational alerts unavailable: ${operationalErrorLabel(
+        error,
+      )}`,
+    );
+    return { available: false, rows: [] };
+  }
+};
+
+const readAdminAnalytics = async (
+  days: AdminAnalyticsRangeDays,
+): Promise<AdminAnalyticsResponse> => {
+  const generatedAt = new Date().toISOString();
+  const empty = buildEmptyAdminAnalytics(days, generatedAt);
+  if (!useSupabase) return empty;
+
+  const endDate = readKoreaDateKey();
+  const startDate = shiftIsoDate(endDate, -(days - 1));
+  const previousEndDate = shiftIsoDate(startDate, -1);
+  const previousStartDate = shiftIsoDate(previousEndDate, -(days - 1));
+  const currentDateKeys = buildAnalyticsDateKeys(endDate, days);
+  const pageViewResultPromise = readOwnedSitePageViewRows({
+    startDateKey: previousStartDate,
+    endDateKey: endDate,
+    label: "admin analytics page views",
+  });
+  const authMetricResultPromise = readOperationalAuthMetricBuckets({
+    startDateKey: previousStartDate,
+    endDateKey: endDate,
+  });
+
+  const [
+    contractsResult,
+    supportAccessResult,
+    verificationResult,
+    supportTicketsResult,
+    alertsResult,
+    pageViewsResult,
+    authMetricsResult,
+  ] = await Promise.allSettled([
+    readOperationalAdminContracts(),
+    readOperationalAdminSupportAccessRequests(),
+    readOperationalAdminVerificationRequests(),
+    readOperationalAdminSupportTickets(),
+    readAnalyticsOperationalAlerts(),
+    pageViewResultPromise,
+    authMetricResultPromise,
+  ]);
+
+  const contracts =
+    contractsResult.status === "fulfilled" ? contractsResult.value : [];
+  const supportAccessRequests =
+    supportAccessResult.status === "fulfilled"
+      ? supportAccessResult.value
+      : [];
+  const verificationRequests =
+    verificationResult.status === "fulfilled" ? verificationResult.value : [];
+  const supportTickets =
+    supportTicketsResult.status === "fulfilled" ? supportTicketsResult.value : [];
+  const alertData =
+    alertsResult.status === "fulfilled"
+      ? alertsResult.value
+      : { available: false, rows: [] as OperationalAlertRecord[] };
+  const alerts = alertData.rows;
+  const pageViews =
+    pageViewsResult.status === "fulfilled"
+      ? pageViewsResult.value
+      : { available: false, rows: [] as SitePageViewCountRow[] };
+  const authMetrics =
+    authMetricsResult.status === "fulfilled"
+      ? authMetricsResult.value
+      : { available: false, rows: [] as OperationalAuthMetricBucketRow[] };
+
+  const currentPageRows = pageViews.rows.filter((row) =>
+    isDateKeyBetween(row.view_date, startDate, endDate),
+  );
+  const previousPageRows = pageViews.rows.filter((row) =>
+    isDateKeyBetween(row.view_date, previousStartDate, previousEndDate),
+  );
+  const sumPageRows = (rows: SitePageViewCountRow[]) =>
+    rows.reduce((total, row) => total + normalizeSitePageViewCount(row.view_count), 0);
+  const pageViewsByDate = new Map<string, number>();
+  for (const row of currentPageRows) {
+    pageViewsByDate.set(
+      row.view_date,
+      (pageViewsByDate.get(row.view_date) ?? 0) +
+        normalizeSitePageViewCount(row.view_count),
+    );
+  }
+
+  const countCreatedInRange = (
+    records: Array<{ created_at?: string }>,
+    rangeStart: string,
+    rangeEnd: string,
+  ) =>
+    records.filter((record) => {
+      const dateKey = readDateKeyFromValue(record.created_at);
+      return dateKey ? isDateKeyBetween(dateKey, rangeStart, rangeEnd) : false;
+    }).length;
+
+  const currentAuthRows = authMetrics.rows.filter((row) => {
+    const dateKey = readDateKeyFromValue(row.bucket_minute);
+    return dateKey ? isDateKeyBetween(dateKey, startDate, endDate) : false;
+  });
+  const previousAuthRows = authMetrics.rows.filter((row) => {
+    const dateKey = readDateKeyFromValue(row.bucket_minute);
+    return dateKey
+      ? isDateKeyBetween(dateKey, previousStartDate, previousEndDate)
+      : false;
+  });
+  const operationalDataAvailable =
+    contractsResult.status === "fulfilled" &&
+    supportAccessResult.status === "fulfilled" &&
+    verificationResult.status === "fulfilled" &&
+    supportTicketsResult.status === "fulfilled";
+  const pendingVerification = verificationRequests.filter((record) =>
+    isActionableManualVerificationRequest(record, verificationRequests),
+  ).length;
+  const openSupportTickets = supportTickets.filter(
+    (ticket) => ticket.status === "open" || ticket.status === "reviewing",
+  ).length;
+  const pendingOperationalAlerts = alerts.filter(
+    (alert) => alert.status === "queued" || alert.status === "failed",
+  ).length;
+  const currentAuthSummary = buildAdminAnalyticsAuthSummary(
+    currentAuthRows,
+    authMetrics.available,
+  );
+  const previousAuthSummary = buildAdminAnalyticsAuthSummary(
+    previousAuthRows,
+    authMetrics.available,
+  );
+
+  return {
+    generated_at: generatedAt,
+    source: "supabase",
+    range: {
+      days,
+      start_date: startDate,
+      end_date: endDate,
+      previous_start_date: previousStartDate,
+      previous_end_date: previousEndDate,
+    },
+    overview: {
+      page_views: buildAnalyticsComparison(
+        sumPageRows(currentPageRows),
+        sumPageRows(previousPageRows),
+      ),
+      contracts_created: buildAnalyticsComparison(
+        countCreatedInRange(contracts, startDate, endDate),
+        countCreatedInRange(contracts, previousStartDate, previousEndDate),
+      ),
+      support_tickets: buildAnalyticsComparison(
+        countCreatedInRange(supportTickets, startDate, endDate),
+        countCreatedInRange(supportTickets, previousStartDate, previousEndDate),
+      ),
+      verification_requests: buildAnalyticsComparison(
+        countCreatedInRange(verificationRequests, startDate, endDate),
+        countCreatedInRange(
+          verificationRequests,
+          previousStartDate,
+          previousEndDate,
+        ),
+      ),
+      active_contracts: contracts.filter((contract) => contract.status !== "CLOSED")
+        .length,
+    },
+    daily_page_views: currentDateKeys.map((date) => ({
+      date,
+      label: formatAnalyticsDateLabel(date),
+      page_views: pageViewsByDate.get(date) ?? 0,
+    })),
+    page_breakdown: PUBLIC_PAGE_VIEW_PAGES.map((page) => {
+      const current = sumPageRows(
+        currentPageRows.filter((row) => row.page_key === page.key),
+      );
+      const previous = sumPageRows(
+        previousPageRows.filter((row) => row.page_key === page.key),
+      );
+      return {
+        page_key: page.key,
+        label: getPublicPageViewLabel(page.key),
+        current,
+        previous,
+        delta_percent: calculateAnalyticsDeltaPercent(current, previous),
+      };
+    }),
+    auth_health: {
+      current: currentAuthSummary,
+      previous: previousAuthSummary,
+      daily: buildAdminAnalyticsAuthDaily(
+        currentAuthRows,
+        currentDateKeys,
+        authMetrics.available,
+      ),
+    },
+    queue: {
+      pending_verification: pendingVerification,
+      open_support_tickets: openSupportTickets,
+      active_support_access: supportAccessRequests.filter(isSupportAccessActive)
+        .length,
+      pending_operational_alerts: pendingOperationalAlerts,
+    },
+    system_status: [
+      {
+        key: "operational_data",
+        label: "운영 데이터",
+        status: operationalDataAvailable ? "healthy" : "attention",
+        detail: operationalDataAvailable
+          ? "계약·문의·인증 데이터가 갱신되었습니다."
+          : "일부 운영 데이터 연결을 확인해야 합니다.",
+      },
+      {
+        key: "page_views",
+        label: "자체 조회수 집계",
+        status: !pageViews.available
+          ? "unavailable"
+          : currentPageRows.length > 0
+            ? "healthy"
+            : "no_data",
+        detail: !pageViews.available
+          ? "운영 페이지 조회수 마이그레이션 또는 연결을 확인하세요."
+          : currentPageRows.length > 0
+            ? "일자·페이지별 집계가 수집되고 있습니다."
+            : "선택한 기간에 집계된 조회수가 없습니다.",
+      },
+      {
+        key: "auth_metrics",
+        label: "인증 모니터링",
+        status: !authMetrics.available
+          ? "unavailable"
+          : currentAuthRows.length > 0
+            ? "healthy"
+            : "no_data",
+        detail: !authMetrics.available
+          ? "생산 인증 지표 테이블을 확인하세요."
+          : currentAuthRows.length > 0
+            ? "생산 인증 요청·실패·지연을 집계하고 있습니다."
+            : "선택한 기간에 인증 지표가 없습니다.",
+      },
+      {
+        key: "alerts",
+        label: "운영 알림",
+        status:
+          alertsResult.status === "fulfilled" && alertData.available
+            ? pendingOperationalAlerts > 0
+              ? "attention"
+              : "healthy"
+            : "unavailable",
+        detail:
+          alertsResult.status !== "fulfilled" || !alertData.available
+            ? "운영 알림 연결을 확인하세요."
+            : pendingOperationalAlerts > 0
+              ? `${pendingOperationalAlerts.toLocaleString("ko-KR")}건의 미처리 알림이 있습니다.`
+              : "미처리 운영 알림이 없습니다.",
+      },
+    ],
+  };
+};
+
+app.post("/api/site-page-views", async (request, response) => {
+  response.setHeader("Cache-Control", "no-store");
+  if (!sitePageViewCounterEnabled || !useSupabase) {
+    response.status(204).end();
+    return;
+  }
+
+  const pageKey = parseSitePageViewKey(request.body?.page_key);
+  if (!pageKey) {
+    response.status(400).json({ error: "Invalid public page key" });
+    return;
+  }
+
+  // Keep abuse-control identity transient and one-way. The aggregate analytics
+  // table still receives only the fixed page key and date/count values.
+  const throttle = consumeLocalRateLimitBucket(
+    `owned-page-view:${sha256Hex(getClientIp(request))}:${pageKey}`,
+    sitePageViewRateLimitMaxAttempts,
+    sitePageViewRateLimitWindowMs,
+  );
+  if (throttle.blocked) {
+    response.status(204).end();
+    return;
+  }
+
+  try {
+    await incrementOwnedSitePageView(pageKey);
+    response.status(204).end();
+  } catch (error) {
+    // Counting is best-effort. Never expose database details or block a public
+    // page because the aggregate counter is temporarily unavailable.
+    console.warn(
+      `[${productName}] owned site page view write failed: ${operationalErrorLabel(
+        error,
+      )}`,
+    );
+    response.status(204).end();
+  }
+});
 
 app.get("/api/health", (_request, response) => {
   response.setHeader("Cache-Control", "no-store");
@@ -29270,6 +32616,7 @@ app.get("/api/admin/session", async (request, response, next) => {
 });
 
 app.post("/api/admin/login", async (request, response, next) => {
+  let loginReservation: AdminMfaRateLimitReservation | undefined;
   try {
     setPrivateAuthResponseHeaders(response);
     if (!isAdminAuthConfigured()) {
@@ -29288,20 +32635,24 @@ app.post("/api/admin/login", async (request, response, next) => {
       return;
     }
 
-    const attemptKey = `admin-login:${sha256Hex(email)}:ip:${sha256Hex(
-      getClientIp(request),
-    )}`;
-    const throttle = await consumeRateLimitBucket(
-      attemptKey,
-      adminLoginMaxFailures,
-      Math.max(adminLoginWindowMs, adminLoginLockMs),
-    );
+    try {
+      loginReservation = await reserveAdminLoginRateLimit(request, email);
+    } catch (error) {
+      if (error instanceof DistributedRateLimitUnavailableError) {
+        sendRetryableAdminLoginLimiterUnavailable(response);
+        return;
+      }
+      throw error;
+    }
 
-    if (throttle.blocked) {
-      response.setHeader("Retry-After", String(throttle.retryAfterSeconds ?? 60));
+    if (loginReservation.blocked) {
+      response.setHeader(
+        "Retry-After",
+        String(loginReservation.retryAfterSeconds || 60),
+      );
       response.status(429).json({
         error: "운영자 로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.",
-        retry_after_seconds: throttle.retryAfterSeconds,
+        retry_after_seconds: loginReservation.retryAfterSeconds,
       });
       return;
     }
@@ -29314,8 +32665,30 @@ app.post("/api/admin/login", async (request, response, next) => {
         (error instanceof SupabasePasswordGrantError && error.retryable) ||
         !(error instanceof SupabasePasswordGrantError)
       ) {
+        if (
+          loginReservation &&
+          !(await settleAdminLoginReservation(
+            response,
+            loginReservation,
+            "rollback",
+          ))
+        ) {
+          return;
+        }
+        loginReservation = undefined;
         throw new AuthSessionTemporarilyUnavailableError(error);
       }
+      if (
+        loginReservation &&
+        !(await settleAdminLoginReservation(
+          response,
+          loginReservation,
+          "failure",
+        ))
+      ) {
+        return;
+      }
+      loginReservation = undefined;
       response.status(401).json({ error: "이메일 또는 비밀번호를 확인해 주세요." });
       return;
     }
@@ -29333,11 +32706,38 @@ app.post("/api/admin/login", async (request, response, next) => {
     }
     if (profile?.role !== "admin") {
       (request as OperationalAuthMetricRequest).authMetricOutcome = "invalid";
+      if (
+        loginReservation &&
+        !(await settleAdminLoginReservation(
+          response,
+          loginReservation,
+          "failure",
+        ))
+      ) {
+        await revokeSupabaseSession(session.access_token).catch(() => undefined);
+        clearAdminSessionCookies(response);
+        return;
+      }
+      loginReservation = undefined;
       await revokeSupabaseSession(session.access_token).catch(() => undefined);
       clearAdminSessionCookies(response);
       response.status(403).json({ error: "운영자 계정 권한이 필요합니다." });
       return;
     }
+
+    if (
+      loginReservation &&
+      !(await settleAdminLoginReservation(
+        response,
+        loginReservation,
+        "rollback",
+      ))
+    ) {
+      await revokeSupabaseSession(session.access_token).catch(() => undefined);
+      clearAdminSessionCookies(response);
+      return;
+    }
+    loginReservation = undefined;
 
     const claims = decodeSupabaseAccessTokenClaims(session.access_token);
     if (
@@ -29347,7 +32747,6 @@ app.post("/api/admin/login", async (request, response, next) => {
     ) {
       await registerAdminOperatorSession(profile, claims);
       setAdminSessionCookies(response, session, adminSessionMaxAgeSeconds);
-      await clearRateLimitBucket(attemptKey);
       response.json({
         authenticated: true,
         configured: true,
@@ -29411,7 +32810,6 @@ app.post("/api/admin/login", async (request, response, next) => {
       factor!.id,
       adminMetricDataOrigin,
     );
-    await clearRateLimitBucket(attemptKey);
     response.json({
       authenticated: false,
       configured: true,
@@ -29421,6 +32819,16 @@ app.post("/api/admin/login", async (request, response, next) => {
       secret: enrollment?.secret,
     });
   } catch (error) {
+    if (loginReservation && !loginReservation.blocked) {
+      try {
+        await rollbackAdminMfaRateLimitReservation(loginReservation.id);
+      } catch {
+        if (!response.headersSent) {
+          sendRetryableAdminLoginLimiterUnavailable(response);
+          return;
+        }
+      }
+    }
     next(error);
   }
 });
@@ -29768,11 +33176,13 @@ app.get("/api/admin/metrics", async (request, response, next) => {
       supportAccessRequests,
       verificationRequests,
       supportTickets,
+      sitePageViews,
     ] = await Promise.all([
       readOperationalAdminContracts(),
       readOperationalAdminSupportAccessRequests(),
       readOperationalAdminVerificationRequests(),
       readOperationalAdminSupportTickets(),
+      readOwnedSitePageViewMetrics(),
     ]);
     const metrics = await buildAdminMetrics(
       contracts,
@@ -29798,9 +33208,47 @@ app.get("/api/admin/metrics", async (request, response, next) => {
           ).length,
           total_count: supportTickets.length,
         },
+        site_page_views: sitePageViews,
       },
     });
   } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/admin/analytics", async (request, response, next) => {
+  const startedAt = Date.now();
+  try {
+    if (!(await requireAdminSession(request, response))) return;
+
+    const requestedRange =
+      typeof request.query.range === "string" ? Number(request.query.range) : NaN;
+    const days = isAdminAnalyticsRangeDays(requestedRange)
+      ? requestedRange
+      : (30 as AdminAnalyticsRangeDays);
+    const analytics = await readAdminAnalytics(days);
+
+    response.setHeader("Cache-Control", "private, no-store");
+    response.json({ analytics });
+    console.info(
+      JSON.stringify({
+        level: "info",
+        message: "admin analytics completed",
+        route: "/api/admin/analytics",
+        range_days: days,
+        duration_ms: Date.now() - startedAt,
+      }),
+    );
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        message: "admin analytics failed",
+        route: "/api/admin/analytics",
+        duration_ms: Date.now() - startedAt,
+        error: operationalErrorLabel(error),
+      }),
+    );
     next(error);
   }
 });
@@ -29924,35 +33372,41 @@ app.patch("/api/admin/support-access-requests/:id", async (request, response, ne
       return;
     }
 
-    const statusAuditEvent: SupportAccessAuditEvent = {
-      id: randomUUID(),
-      action: status === "closed" ? "closed" : "revoked",
-      actor_role: "admin",
-      actor_profile_id: admin.profile.id,
-      actor_name: admin.profile.name,
-      description:
-        status === "closed"
-          ? "운영자가 지원 열람을 종료했습니다."
-          : "운영자가 지원 열람을 회수했습니다.",
+    const result = await transitionSupportAccessStatusAtomically({
+      record,
+      targetStatus: status,
+      actorProfileId: admin.profile.id,
+      actorName: admin.profile.name,
+      adminAuthSessionId: admin.authSessionId,
+      eventId: randomUUID(),
       ip: getClientIp(request),
-      user_agent: request.header("user-agent") ?? "unknown",
-      created_at: new Date().toISOString(),
-    };
-
-    const updated = await updateSupportAccessRequest({
-      ...record,
-      status,
-      reviewed_by_profile_id: admin.profile.id,
-      reviewed_by_name: admin.profile.name,
-      reviewed_at: new Date().toISOString(),
-      audit_events: useSupabase
-        ? record.audit_events
-        : [...(record.audit_events ?? []), statusAuditEvent],
+      userAgent: request.header("user-agent") ?? "unknown",
     });
+    if (result.outcome === "not_found") {
+      response.status(404).json({ error: "Support access request not found" });
+      return;
+    }
+    if (
+      result.outcome === "version_conflict" ||
+      result.outcome === "invalid_transition" ||
+      result.outcome === "request_conflict"
+    ) {
+      response.status(409).json({
+        error: "Support access status changed. Refresh and try again.",
+        code: result.outcome,
+        request: result.request,
+      });
+      return;
+    }
+    if (!result.request) {
+      throw new Error("Atomic support access transition returned no request");
+    }
 
-    await appendSupportAccessEventRow(updated, statusAuditEvent);
-
-    response.json({ request: updated, is_active: isSupportAccessActive(updated) });
+    response.status(result.outcome === "reconciled" ? 202 : 200).json({
+      request: result.request,
+      is_active: isSupportAccessActive(result.request),
+      persistence_reconciled: result.outcome === "reconciled",
+    });
   } catch (error) {
     next(error);
   }
@@ -30059,28 +33513,43 @@ app.post("/api/auth/password-reset/request", async (request, response) => {
       return;
     }
 
-    const throttle = await consumePublicAuthRateLimit(request, "password_reset", email);
+    const throttle = await consumePublicAuthRateLimit(
+      request,
+      "password_reset",
+      email,
+      { requireDistributed: true },
+    );
     if (throttle.blocked) {
       sendPublicAuthRateLimitResponse(response, throttle);
       return;
     }
 
-    const resetUrl = new URL("/reset-password", `${getAppBaseUrl(request)}/`);
-    if (role === "advertiser" || role === "influencer") {
-      resetUrl.searchParams.set("role", role);
-    }
+    const { state, codeChallenge } = createPasswordResetPkceState(role);
+    const resetUrl = new URL(
+      "/api/auth/password-reset/callback",
+      `${getAppBaseUrl(request)}/`,
+    );
+    resetUrl.searchParams.set("state", state);
 
     await requestSupabasePasswordRecovery({
       email,
       redirectTo: resetUrl.toString(),
+      codeChallenge,
     });
-    await clearPublicAuthRateLimit(request, "password_reset", email);
 
     response.status(202).json({
       message:
         "가입된 이메일이면 비밀번호 재설정 링크를 보냈습니다. 받은 편지함과 스팸함을 확인해 주세요.",
     });
   } catch (error) {
+    if (error instanceof DistributedRateLimitUnavailableError) {
+      response.status(503).json({
+        code: "PASSWORD_RESET_TEMPORARILY_UNAVAILABLE",
+        retryable: true,
+        error: "비밀번호 재설정 요청을 잠시 처리할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+      });
+      return;
+    }
     response.status(400).json({
       error: getLoginFailureMessage(
         error,
@@ -30090,18 +33559,111 @@ app.post("/api/auth/password-reset/request", async (request, response) => {
   }
 });
 
-app.post("/api/auth/password-reset/complete", async (request, response) => {
-  try {
-    const accessToken = normalizeRequiredText(request.body?.access_token);
-    const password = normalizeRequiredText(request.body?.password);
-    const passwordError = validateSignupPassword(password);
+app.get("/api/auth/password-reset/callback", async (request, response) => {
+  response.setHeader("Cache-Control", "no-store");
+  response.setHeader("Referrer-Policy", "no-referrer");
+  const state = decryptPasswordResetPkceState(
+    normalizeOptionalText(request.query.state),
+  );
+  const authCode = normalizeRequiredText(request.query.code);
+  const destination = new URL("/reset-password", `${getAppBaseUrl(request)}/`);
 
-    if (!accessToken) {
-      response.status(422).json({ error: "재설정 링크가 올바르지 않습니다." });
+  if (
+    !useSupabase ||
+    !state ||
+    !authCode ||
+    authCode.length > 2_048 ||
+    request.query.error
+  ) {
+    clearPasswordResetPendingCookie(response);
+    destination.searchParams.set("recovery", "invalid");
+    response.redirect(303, destination.toString());
+    return;
+  }
+
+  try {
+    const recoverySession = await exchangeSupabasePasswordRecoveryCode({
+      authCode,
+      codeVerifier: state.code_verifier,
+    });
+    const { accessToken, claims, user } =
+      await verifySupabasePasswordRecoverySession(recoverySession);
+    const issuedAt = Date.now();
+    const expiresAt = Math.min(
+      state.expires_at,
+      Number(claims.exp) * 1_000,
+      issuedAt + passwordResetPkceMaxAgeSeconds * 1_000,
+    );
+    const pending = encryptPasswordResetPayload(
+      passwordResetPendingCipherPrefix,
+      {
+        version: 2,
+        access_token: accessToken,
+        user_id: user.id,
+        session_id: claims.session_id!,
+        reset_id: randomUUID(),
+        nonce: state.nonce,
+        ...(state.role ? { role: state.role } : {}),
+        issued_at: issuedAt,
+        expires_at: expiresAt,
+      } satisfies PasswordResetRecoveryCookiePayload,
+    );
+    if (pending.length > 3_600 || expiresAt <= issuedAt) {
+      throw new SupabaseAuthUserVerificationError(
+        "Password recovery proof is too large or expired",
+        401,
+        "RESET_RECOVERY_REQUIRED",
+      );
+    }
+
+    if (state.role) destination.searchParams.set("role", state.role);
+    destination.searchParams.set("recovery", "1");
+    appendResponseCookies(response, [
+      `${passwordResetPendingCookie}=${encodeURIComponent(
+        pending,
+      )}; ${passwordResetPendingCookieOptions(
+        Math.max(1, Math.floor((expiresAt - issuedAt) / 1_000)),
+      )}`,
+    ]);
+    response.redirect(303, destination.toString());
+  } catch (error) {
+    console.warn(
+      `[${productName}] password reset callback rejected: ${operationalErrorLabel(
+        error,
+      )}`,
+    );
+    clearPasswordResetPendingCookie(response);
+    destination.searchParams.set("recovery", "invalid");
+    response.redirect(303, destination.toString());
+  }
+});
+
+app.post("/api/auth/password-reset/complete", async (request, response) => {
+  setPrivateAuthResponseHeaders(response);
+  response.setHeader("Pragma", "no-cache");
+  response.setHeader("Referrer-Policy", "no-referrer");
+  try {
+    const password = normalizeRequiredText(request.body?.password);
+    const passwordConfirm = normalizeRequiredText(request.body?.password_confirm);
+    const passwordError = validateSignupPassword(password);
+    const pending = decryptPasswordResetRecoveryCookie(
+      parseCookies(request.header("cookie")).get(passwordResetPendingCookie),
+    );
+
+    if (!pending) {
+      clearPasswordResetPendingCookie(response);
+      response.status(401).json({
+        code: "RESET_RECOVERY_REQUIRED",
+        error: "재설정 링크가 만료되었습니다. 새 링크를 요청해 주세요.",
+      });
       return;
     }
     if (passwordError) {
       response.status(422).json({ error: passwordError });
+      return;
+    }
+    if (password !== passwordConfirm) {
+      response.status(422).json({ error: "새 비밀번호가 서로 일치하지 않습니다." });
       return;
     }
 
@@ -30113,24 +33675,217 @@ app.post("/api/auth/password-reset/complete", async (request, response) => {
     const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "password_reset_complete",
-      accessToken.slice(0, 24),
     );
     if (throttle.blocked) {
       sendSensitiveRateLimitResponse(response, throttle);
       return;
     }
 
-    await updateSupabasePasswordWithRecoveryToken({ accessToken, password });
+    const subjectThrottle = await consumeSensitiveEndpointSubjectRateLimit(
+      "password_reset_complete",
+      `${pending.user_id}:${pending.session_id}`,
+    );
+    if (subjectThrottle.blocked) {
+      sendSensitiveRateLimitResponse(response, subjectThrottle);
+      return;
+    }
+
+    const resetId = getPasswordResetOperationId(pending);
+    const resetInput = {
+      userId: pending.user_id,
+      resetId,
+      recoverySessionId: pending.session_id,
+    };
+    const begun = await callPasswordResetBarrierRpc("begin", resetInput);
+    if (begun.outcome === "completed") {
+      clearPasswordResetPendingCookie(response);
+      response.json({
+        message: "비밀번호를 변경했습니다. 새 비밀번호로 로그인해 주세요.",
+        reconciled: true,
+      });
+      return;
+    }
+    if (!["started", "resumed", "superseded"].includes(begun.outcome ?? "")) {
+      response.status(409).json({
+        code: "PASSWORD_RESET_STATE_CONFLICT",
+        retryable: true,
+        error: "비밀번호 재설정 상태를 확인할 수 없습니다. 새 링크를 요청해 주세요.",
+      });
+      return;
+    }
+    if (begun.outcome === "resumed") {
+      response.status(202).json({
+        code: "PASSWORD_CHANGE_STATUS_PENDING",
+        password_changed: false,
+        retryable: true,
+        message: "비밀번호 변경 상태를 확인하고 있습니다. 새 링크가 필요할 수 있습니다.",
+      });
+      return;
+    }
+
+    const proofThrottle = await consumeRateLimitBucket(
+      `password-reset-proof:${createHmac(
+        "sha256",
+        shareTokenEncryptionSecret,
+      )
+        .update(pending.nonce)
+        .digest("hex")}`,
+      1,
+      passwordResetPkceMaxAgeSeconds * 1_000,
+      { requireDistributed: true },
+    );
+    if (proofThrottle.blocked) {
+      await callPasswordResetBarrierRpc("cancel", resetInput).catch(() => undefined);
+      clearPasswordResetPendingCookie(response);
+      response.status(401).json({
+        code: "RESET_RECOVERY_REQUIRED",
+        error: "이미 사용했거나 만료된 재설정 링크입니다. 새 링크를 요청해 주세요.",
+      });
+      return;
+    }
+
+    let recovery:
+      | Awaited<ReturnType<typeof verifySupabasePasswordRecoveryAccessToken>>
+      | undefined;
+    try {
+      recovery = await verifySupabasePasswordRecoveryAccessToken(
+        pending.access_token,
+        pending.user_id,
+      );
+    } catch {
+      await callPasswordResetBarrierRpc("mark_uncertain", resetInput).catch(
+        () => undefined,
+      );
+      response.status(202).json({
+        code: "PASSWORD_CHANGE_STATUS_PENDING",
+        password_changed: false,
+        retryable: true,
+        message: "비밀번호 변경 상태를 확인하고 있습니다. 잠시 후 다시 시도해 주세요.",
+      });
+      return;
+    }
+    const { accessToken, claims, user } = recovery;
+    if (claims.session_id !== pending.session_id) {
+      await callPasswordResetBarrierRpc("mark_uncertain", resetInput).catch(
+        () => undefined,
+      );
+      response.status(202).json({
+        code: "PASSWORD_CHANGE_STATUS_PENDING",
+        password_changed: false,
+        retryable: true,
+        message: "비밀번호 변경 상태를 확인하고 있습니다. 새 링크를 요청해 주세요.",
+      });
+      return;
+    }
+    try {
+      await updateSupabasePasswordWithRecoveryToken({ accessToken, password });
+    } catch (error) {
+      if (
+        error instanceof SupabaseAuthUserVerificationError &&
+        error.status >= 400 &&
+        error.status < 500 &&
+        error.status !== 408 &&
+        error.status !== 429
+      ) {
+        const cancelled = await callPasswordResetBarrierRpc("cancel", resetInput);
+        if (cancelled.outcome !== "cancelled") {
+          throw new AuthSessionTemporarilyUnavailableError(
+            new Error("Password reset cancellation could not be confirmed"),
+          );
+        }
+        response.status(422).json({
+          code: "PASSWORD_CHANGE_REJECTED",
+          error: "새 비밀번호를 사용할 수 없습니다. 다른 비밀번호를 입력해 주세요.",
+        });
+        return;
+      }
+      await callPasswordResetBarrierRpc("mark_uncertain", resetInput).catch(
+        () => undefined,
+      );
+      response.status(202).json({
+        code: "PASSWORD_CHANGE_STATUS_PENDING",
+        password_changed: false,
+        retryable: true,
+        message: "비밀번호 변경 상태를 확인하고 있습니다. 잠시 후 다시 시도해 주세요.",
+      });
+      return;
+    }
+    let sessionsRevocationPending = false;
+    await revokeSupabaseSessionsGlobally(accessToken).catch((error) => {
+      sessionsRevocationPending = true;
+      console.warn(
+        `[${productName}] password reset global session revoke failed: ${
+          operationalErrorLabel(error)
+        }`,
+      );
+    });
+    establishExplicitUserSessionLogout(
+      request,
+      response,
+      "advertiser",
+      [accessToken],
+      user.id,
+    );
+    establishExplicitUserSessionLogout(
+      request,
+      response,
+      "influencer",
+      [accessToken],
+      user.id,
+    );
+
+    let finished: PasswordResetBarrierResult;
+    try {
+      finished = await callPasswordResetBarrierRpc("finish", resetInput);
+    } catch {
+      response.status(202).json({
+        code: "PASSWORD_CHANGED_SECURITY_FINALIZATION_PENDING",
+        password_changed: true,
+        retryable: true,
+        message: "비밀번호는 변경되었습니다. 보안 처리를 확인하는 동안 잠시 후 다시 시도해 주세요.",
+      });
+      return;
+    }
+    if (finished.outcome !== "finished" && finished.outcome !== "completed") {
+      response.status(202).json({
+        code: "PASSWORD_CHANGED_SECURITY_FINALIZATION_PENDING",
+        password_changed: true,
+        retryable: true,
+        message: "비밀번호는 변경되었습니다. 보안 처리를 확인하는 동안 잠시 후 다시 시도해 주세요.",
+      });
+      return;
+    }
+
+    clearPasswordResetPendingCookie(response);
+
+    if (sessionsRevocationPending) {
+      response.status(202).json({
+        code: "PASSWORD_CHANGED_SESSION_REVOCATION_PENDING",
+        password_changed: true,
+        sessions_revocation_pending: true,
+        message:
+          "비밀번호는 변경되었습니다. 기존 로그인 종료를 확인하는 동안 다시 로그인해 주세요.",
+      });
+      return;
+    }
 
     response.json({
       message: "비밀번호를 변경했습니다. 새 비밀번호로 로그인해 주세요.",
     });
   } catch (error) {
-    response.status(400).json({
-      error: getLoginFailureMessage(
-        error,
-        "비밀번호를 변경하지 못했습니다. 재설정 링크를 다시 요청해 주세요.",
-      ),
+    if (error instanceof AuthSessionTemporarilyUnavailableError) {
+      response.setHeader("Retry-After", "1");
+      response.status(503).json({
+        code: "PASSWORD_RESET_TEMPORARILY_UNAVAILABLE",
+        retryable: true,
+        error: "비밀번호 재설정을 잠시 처리할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+      });
+      return;
+    }
+    response.status(503).json({
+      code: "PASSWORD_RESET_TEMPORARILY_UNAVAILABLE",
+      retryable: true,
+      error: "비밀번호 재설정을 잠시 처리할 수 없습니다. 잠시 후 다시 시도해 주세요.",
     });
   }
 });
@@ -30186,6 +33941,7 @@ app.post("/api/auth/recent", async (request, response, next) => {
       request,
       "recent_auth_password",
       `${session.profile.id}:${action}`,
+      { trustedSubject: true },
     );
     if (throttle.blocked) {
       sendSensitiveRateLimitResponse(response, throttle);
@@ -31935,7 +35691,17 @@ app.get("/api/cron/privacy-retention", async (request, response, next) => {
   if (!requireCronRequest(request, response)) return;
 
   try {
-    response.json(await runPrivacyRetentionSweep());
+    // A completed Storage-deletion queue row is the proof required to prune a
+    // finalized upload ticket. Preserve that proof by pruning tickets before
+    // the general retention sweep is allowed to age out queue history.
+    const privateUploadTicketPrune = await runPrivateUploadTicketPrune();
+    const privacyRetention = await runPrivacyRetentionSweep();
+    const privateUploadCleanup = await runPrivateUploadCleanupSweep();
+    response.json({
+      ...privacyRetention,
+      private_upload_cleanup: privateUploadCleanup,
+      private_upload_ticket_prune: privateUploadTicketPrune,
+    });
   } catch (error) {
     await enqueuePrivacyRetentionFailureAlert(new Date().toISOString()).catch(
       () => undefined,
@@ -31946,8 +35712,10 @@ app.get("/api/cron/privacy-retention", async (request, response, next) => {
 
 app.get("/api/marketplace/influencers", async (request, response, next) => {
   try {
+    const discoveryCorrelationId = randomUUID();
     response.setHeader("Cache-Control", "private, no-store");
     response.setHeader("Vary", "Cookie");
+    response.setHeader("X-Request-Id", discoveryCorrelationId);
     const advertiserAuth = await requireAdvertiserSession(request, response);
     if (!advertiserAuth) return;
     const organization = await readDefaultOrganizationForProfile(
@@ -31998,8 +35766,10 @@ app.get("/api/marketplace/influencers", async (request, response, next) => {
     let result;
     try {
       result = await readAuthenticatedMarketplaceInfluencerPage({
-        accessToken: advertiserAuth.accessToken,
+        actorUserId: advertiserAuth.user.id,
+        actorProfileId: advertiserAuth.profile.id,
         organizationId: organization.id,
+        correlationId: discoveryCorrelationId,
         page,
         sort: sort ?? "audience_desc",
         filters: profileFilters,
@@ -32007,27 +35777,21 @@ app.get("/api/marketplace/influencers", async (request, response, next) => {
       });
     } catch (error) {
       if (error instanceof AuthenticatedInfluencerDirectoryAccessError) {
-        const hasOrganizationAccess =
-          await hasActiveAdvertiserOrganizationMembership({
-            profileId: advertiserAuth.profile.id,
-            organizationId: organization.id,
-          });
-        if (!hasOrganizationAccess) {
-          response.status(403).json({
-            error: "활성 광고주 조직 권한이 필요합니다.",
-          });
-          return;
-        }
-        result = await readIndexedMarketplaceInfluencerPage({
-          page,
-          sort: sort ?? "audience_desc",
-          filters: profileFilters,
-          savedOnly,
-          organizationId: organization.id,
+        response.status(403).json({
+          error: "활성 운영 광고주 조직 권한이 필요합니다.",
         });
-      } else {
-        throw error;
+        return;
       }
+      if (error instanceof MarketplaceInfluencerDirectoryUpstreamError) {
+        response.setHeader("Retry-After", "1");
+        response.status(503).json({
+          error: "인플루언서 목록을 잠시 불러오지 못했습니다.",
+          retryable: true,
+          request_id: discoveryCorrelationId,
+        });
+        return;
+      }
+      throw error;
     }
     response.json(result);
   } catch (error) {
@@ -32192,21 +35956,13 @@ app.get("/api/marketplace/brands/:handle", async (request, response, next) => {
   }
 });
 
-app.get("/api/marketplace/campaigns", async (request, response, next) => {
+app.get("/api/marketplace/campaigns", async (_request, response, next) => {
   try {
-    const fresh = isValidPublicMarketplaceFreshQuery(request.query.fresh);
-    if (fresh) setFreshPublicMarketplaceHeaders(response);
-    const campaigns = fresh
-      ? await readMarketplaceCampaignPosts()
-      : await readPublicMarketplaceCache(
-          "marketplace-campaigns",
-          readMarketplaceCampaignPosts,
-          { fallback: fallbackMarketplaceCampaignPosts },
-        );
-    if (fresh) {
-      sendFreshPublicMarketplaceJson(response, { campaigns });
-      return;
-    }
+    const campaigns = await readPublicMarketplaceCache(
+      "marketplace-campaigns",
+      readMarketplaceCampaignPosts,
+      { fallback: fallbackMarketplaceCampaignPosts },
+    );
     sendPublicMarketplaceJson(response, { campaigns }, "marketplace-campaigns");
   } catch (error) {
     next(error);
@@ -32215,15 +35971,11 @@ app.get("/api/marketplace/campaigns", async (request, response, next) => {
 
 app.get("/api/marketplace/campaigns/:campaignId", async (request, response, next) => {
   try {
-    const fresh = isValidPublicMarketplaceFreshQuery(request.query.fresh);
-    if (fresh) setFreshPublicMarketplaceHeaders(response);
-    const campaigns = fresh
-      ? await readMarketplaceCampaignPosts()
-      : await readPublicMarketplaceCache(
-          "marketplace-campaigns",
-          readMarketplaceCampaignPosts,
-          { fallback: fallbackMarketplaceCampaignPosts },
-        );
+    const campaigns = await readPublicMarketplaceCache(
+      "marketplace-campaigns",
+      readMarketplaceCampaignPosts,
+      { fallback: fallbackMarketplaceCampaignPosts },
+    );
     const campaign = campaigns.find(
       (candidate) => candidate.id === request.params.campaignId,
     );
@@ -32233,10 +35985,6 @@ app.get("/api/marketplace/campaigns/:campaignId", async (request, response, next
       return;
     }
 
-    if (fresh) {
-      sendFreshPublicMarketplaceJson(response, { campaign });
-      return;
-    }
     sendPublicMarketplaceJson(response, { campaign }, "marketplace-campaigns");
   } catch (error) {
     next(error);
@@ -32247,7 +35995,11 @@ const readCampaignSharePreviewInput = async (
   campaignId: string,
 ): Promise<CampaignSharePreviewInput | undefined> => {
   if (!useSupabase || !isUuidText(campaignId)) return undefined;
-  const campaigns = await readMarketplaceCampaignPosts();
+  const campaigns = await readPublicMarketplaceCache(
+    "marketplace-campaigns",
+    readMarketplaceCampaignPosts,
+    { fallback: fallbackMarketplaceCampaignPosts },
+  );
   const campaign = campaigns.find((candidate) => candidate.id === campaignId);
   if (
     !campaign ||
@@ -32266,18 +36018,46 @@ const readCampaignSharePreviewInput = async (
   };
 };
 
+const renderGenericCampaignShareImage = () => {
+  genericCampaignShareImagePromise ??= renderCampaignShareImage().catch(
+    (error) => {
+      genericCampaignShareImagePromise = undefined;
+      throw error;
+    },
+  );
+  return genericCampaignShareImagePromise;
+};
+
+const renderCachedCampaignShareImage = (
+  campaign: CampaignSharePreviewInput | undefined,
+) => {
+  if (!campaign) return renderGenericCampaignShareImage();
+
+  const cacheKey = `${campaign.id}:${campaign.updatedAt ?? "unknown"}`;
+  const cached = campaignShareImageCache.get(cacheKey);
+  if (cached) return cached;
+
+  const image = renderCampaignShareImage(campaign).catch(() =>
+    renderGenericCampaignShareImage(),
+  );
+  campaignShareImageCache.set(cacheKey, image);
+  while (campaignShareImageCache.size > campaignShareImageCacheMaxEntries) {
+    const oldestKey = campaignShareImageCache.keys().next().value as
+      | string
+      | undefined;
+    if (!oldestKey) break;
+    campaignShareImageCache.delete(oldestKey);
+  }
+  return image;
+};
+
 app.get("/api/og/campaigns/:campaignId", async (request, response, next) => {
   try {
     const campaign =
       request.params.campaignId === "generic"
         ? undefined
         : await readCampaignSharePreviewInput(request.params.campaignId);
-    let image: Buffer;
-    try {
-      image = await renderCampaignShareImage(campaign);
-    } catch {
-      image = await renderCampaignShareImage();
-    }
+    const image = await renderCachedCampaignShareImage(campaign);
     response.setHeader("Content-Type", "image/png");
     response.setHeader("Cache-Control", publicMarketplaceCacheControl);
     response.setHeader("CDN-Cache-Control", publicMarketplaceCdnCacheControl);
@@ -32356,6 +36136,7 @@ app.post(
         request,
         "marketplace_campaign_application",
         `${influencerAuth.profile.id}:${request.params.campaignId}`,
+        { trustedSubject: true },
       );
       if (throttle.blocked) {
         sendSensitiveRateLimitResponse(response, throttle);
@@ -32524,6 +36305,7 @@ app.post("/api/advertiser/brand-image", async (request, response, next) => {
       request,
       "advertiser_brand_image_upload",
       advertiserAuth.profile.id,
+      { trustedSubject: true },
     );
     if (throttle.blocked) {
       sendSensitiveRateLimitResponse(response, throttle);
@@ -32565,6 +36347,7 @@ app.post("/api/advertiser/campaign-image", async (request, response, next) => {
       request,
       "advertiser_campaign_image_upload",
       advertiserAuth.profile.id,
+      { trustedSubject: true },
     );
     if (throttle.blocked) {
       sendSensitiveRateLimitResponse(response, throttle);
@@ -32704,6 +36487,7 @@ app.post(
         request,
         "marketplace_proposal_accept",
         `${advertiserAuth.profile.id}:${request.params.id}`,
+        { trustedSubject: true },
       );
       if (throttle.blocked) {
         sendSensitiveRateLimitResponse(response, throttle);
@@ -32763,6 +36547,7 @@ app.post(
         request,
         "marketplace_proposal_respond",
         `${advertiserAuth.profile.id}:${request.params.id}`,
+        { trustedSubject: true },
       );
       if (throttle.blocked) {
         sendSensitiveRateLimitResponse(response, throttle);
@@ -32799,6 +36584,7 @@ app.post(
         request,
         "marketplace_proposal_respond",
         `${influencerAuth.profile.id}:${request.params.id}`,
+        { trustedSubject: true },
       );
       if (throttle.blocked) {
         sendSensitiveRateLimitResponse(response, throttle);
@@ -32899,6 +36685,7 @@ app.post("/api/influencer/public-profile/avatar", async (request, response, next
       request,
       "influencer_avatar_upload",
       influencerAuth.profile.id,
+      { trustedSubject: true },
     );
     if (throttle.blocked) {
       sendSensitiveRateLimitResponse(response, throttle);
@@ -32970,6 +36757,7 @@ app.post("/api/influencer/public-profile/handle-appeal", async (request, respons
       request,
       "public_profile_handle_appeal",
       influencerAuth.profile.id,
+      { trustedSubject: true },
     );
     if (throttle.blocked) {
       sendSensitiveRateLimitResponse(response, throttle);
@@ -33012,6 +36800,7 @@ app.post(
         request,
         "marketplace_proposal_create",
         advertiserAuth.profile.id,
+        { trustedSubject: true },
       );
       if (throttle.blocked) {
         sendSensitiveRateLimitResponse(response, throttle);
@@ -33173,6 +36962,7 @@ app.post(
         request,
         "marketplace_proposal_create",
         influencerAuth.profile.id,
+        { trustedSubject: true },
       );
       if (throttle.blocked) {
         sendSensitiveRateLimitResponse(response, throttle);
@@ -33512,12 +37302,192 @@ app.post(
         },
       });
     } catch (error) {
+      if (
+        error instanceof ContractVersionConflictError ||
+        (error instanceof Error &&
+          /DIRECTSIGN_CONTRACT_NOT_ACTIVE|could not serialize access/i.test(
+            error.message,
+          ))
+      ) {
+        response.status(409).json({
+          code: "CONTRACT_VERSION_CHANGED",
+          error: "계약 상태가 변경되었습니다. 최신 내용을 다시 확인해 주세요.",
+        });
+        return;
+      }
+      next(error);
+    }
+  },
+);
+
+app.post(
+  "/api/verification/advertiser/upload-ticket",
+  async (request, response, next) => {
+    response.setHeader("Cache-Control", "private, no-store");
+    response.setHeader("Vary", "Cookie");
+    try {
+      if (!useSupabase) {
+        response.status(503).json({
+          code: "UPLOAD_NOT_READY",
+          error: "Private upload storage is unavailable",
+        });
+        return;
+      }
+      const throttle = await consumeSensitiveEndpointRateLimit(
+        request,
+        "verification_advertiser_upload_ticket",
+      );
+      if (throttle.blocked) {
+        sendSensitiveRateLimitResponse(response, throttle);
+        return;
+      }
+      const advertiserAuth = await requireAdvertiserSession(request, response);
+      if (!advertiserAuth) return;
+      const actorThrottle = await consumeSensitiveEndpointSubjectRateLimit(
+        "verification_advertiser_upload_ticket_actor",
+        advertiserAuth.profile.id,
+      );
+      if (actorThrottle.blocked) {
+        sendSensitiveRateLimitResponse(response, actorThrottle);
+        return;
+      }
+      const uploadId = normalizeOptionalText(request.body?.upload_id);
+      if (!uploadId || !isUuidText(uploadId)) {
+        response.status(422).json({
+          code: "UPLOAD_TICKET_INVALID",
+          error: "Valid upload_id is required",
+        });
+        return;
+      }
+      const declaredSize = Number(request.body?.file?.size);
+      if (Number.isFinite(declaredSize) && declaredSize > maxVerificationFileSize) {
+        response.status(413).json({
+          code: "UPLOAD_STORAGE_LIMIT",
+          error: "Verification evidence file must be 10MB or smaller",
+        });
+        return;
+      }
+      const descriptor = parsePrivateFileUploadDescriptor(request.body?.file);
+      if (!descriptor) {
+        response.status(422).json({
+          code: "UPLOAD_TICKET_INVALID",
+          error: "Valid private file metadata is required",
+        });
+        return;
+      }
+      const context = await buildAdvertiserVerificationContext(advertiserAuth);
+      if (!context.organizationId || !isUuidText(context.organizationId)) {
+        response.status(409).json({
+          code: "UPLOAD_TICKET_INVALID",
+          error: "Advertiser organization is required",
+        });
+        return;
+      }
+      response.json(
+        await issuePrivateFileUploadTicket({
+          ticketId: uploadId,
+          purpose: "advertiser_verification",
+          actorProfileId: advertiserAuth.profile.id,
+          resourceId: uploadId,
+          descriptor,
+        }),
+      );
+    } catch (error) {
+      if (sendPrivateFileUploadError(response, error)) return;
+      if (!response.headersSent) {
+        response.status(503).json({
+          code: "UPLOAD_NOT_READY",
+          error: "Private upload preparation is temporarily unavailable",
+        });
+        return;
+      }
+      next(error);
+    }
+  },
+);
+
+app.post(
+  "/api/verification/influencer/upload-ticket",
+  async (request, response, next) => {
+    response.setHeader("Cache-Control", "private, no-store");
+    response.setHeader("Vary", "Cookie");
+    try {
+      if (!useSupabase) {
+        response.status(503).json({
+          code: "UPLOAD_NOT_READY",
+          error: "Private upload storage is unavailable",
+        });
+        return;
+      }
+      const throttle = await consumeSensitiveEndpointRateLimit(
+        request,
+        "verification_influencer_upload_ticket",
+      );
+      if (throttle.blocked) {
+        sendSensitiveRateLimitResponse(response, throttle);
+        return;
+      }
+      const influencerAuth = await requireInfluencerSession(request, response);
+      if (!influencerAuth) return;
+      const actorThrottle = await consumeSensitiveEndpointSubjectRateLimit(
+        "verification_influencer_upload_ticket_actor",
+        influencerAuth.profile.id,
+      );
+      if (actorThrottle.blocked) {
+        sendSensitiveRateLimitResponse(response, actorThrottle);
+        return;
+      }
+      const uploadId = normalizeOptionalText(request.body?.upload_id);
+      if (!uploadId || !isUuidText(uploadId)) {
+        response.status(422).json({
+          code: "UPLOAD_TICKET_INVALID",
+          error: "Valid upload_id is required",
+        });
+        return;
+      }
+      const declaredSize = Number(request.body?.file?.size);
+      if (Number.isFinite(declaredSize) && declaredSize > maxVerificationFileSize) {
+        response.status(413).json({
+          code: "UPLOAD_STORAGE_LIMIT",
+          error: "Verification evidence file must be 10MB or smaller",
+        });
+        return;
+      }
+      const descriptor = parsePrivateFileUploadDescriptor(request.body?.file);
+      if (!descriptor) {
+        response.status(422).json({
+          code: "UPLOAD_TICKET_INVALID",
+          error: "Valid private file metadata is required",
+        });
+        return;
+      }
+      response.json(
+        await issuePrivateFileUploadTicket({
+          ticketId: uploadId,
+          purpose: "influencer_verification",
+          actorProfileId: influencerAuth.profile.id,
+          resourceId: uploadId,
+          descriptor,
+        }),
+      );
+    } catch (error) {
+      if (sendPrivateFileUploadError(response, error)) return;
+      if (!response.headersSent) {
+        response.status(503).json({
+          code: "UPLOAD_NOT_READY",
+          error: "Private upload preparation is temporarily unavailable",
+        });
+        return;
+      }
       next(error);
     }
   },
 );
 
 app.post("/api/verification/advertiser", async (request, response, next) => {
+  let pendingEvidenceRequestId: string | undefined;
+  let pendingEvidenceActorProfileId: string | undefined;
+  let pendingStoredEvidenceFile: StoredPrivateFile | undefined;
   try {
     response.setHeader("Cache-Control", "private, no-store");
     response.setHeader("Vary", "Cookie");
@@ -33534,6 +37504,7 @@ app.post("/api/verification/advertiser", async (request, response, next) => {
     const advertiserAuth = await requireAdvertiserSession(request, response);
 
     if (!advertiserAuth) return;
+    pendingEvidenceActorProfileId = advertiserAuth.profile.id;
 
     const verificationContext = await buildAdvertiserVerificationContext(
       advertiserAuth,
@@ -33558,11 +37529,32 @@ app.post("/api/verification/advertiser", async (request, response, next) => {
       request.body?.document_check_number,
     );
     const note = normalizeOptionalText(request.body?.note);
-    const evidenceFile = parseEvidenceFile(request.body?.evidence_file);
-    const evidenceError =
-      submissionMode === "document" || evidenceFile
-        ? validateEvidenceFile(evidenceFile)
-        : undefined;
+    if (
+      request.body &&
+      typeof request.body === "object" &&
+      "evidence_file" in request.body
+    ) {
+      response.status(422).json({
+        code: "UPLOAD_TICKET_INVALID",
+        error: "Inline verification evidence is no longer accepted",
+      });
+      return;
+    }
+    const uploadTicketId = normalizeOptionalText(request.body?.upload_ticket_id);
+    if (uploadTicketId && !isUuidText(uploadTicketId)) {
+      response.status(422).json({
+        code: "UPLOAD_TICKET_INVALID",
+        error: "Valid upload_ticket_id is required",
+      });
+      return;
+    }
+    if (submissionMode === "document" && !uploadTicketId) {
+      response.status(422).json({
+        code: "UPLOAD_TICKET_INVALID",
+        error: "Document verification requires an upload ticket",
+      });
+      return;
+    }
 
     if (!subjectName) {
       response.status(422).json({ error: "Company or brand name is required" });
@@ -33595,8 +37587,11 @@ app.post("/api/verification/advertiser", async (request, response, next) => {
         representativeName,
       });
     const now = new Date().toISOString();
-    const requestId = randomUUID();
-    const autoApprove = shouldAutoApproveBusinessVerification(businessAutomationCheck);
+    const requestId = uploadTicketId ?? randomUUID();
+    pendingEvidenceRequestId = requestId;
+    const autoApprove =
+      !uploadTicketId &&
+      shouldAutoApproveBusinessVerification(businessAutomationCheck);
 
     if (!autoApprove && submissionMode === "automatic") {
       const fallback = buildAdvertiserVerificationFallback(
@@ -33621,24 +37616,24 @@ app.post("/api/verification/advertiser", async (request, response, next) => {
       response.status(422).json({ error: "Document issue date cannot be in the future" });
       return;
     }
-    if (!autoApprove && evidenceError) {
-      response.status(422).json({ error: evidenceError });
-      return;
-    }
-
-    const storedEvidenceFile =
-      !autoApprove && evidenceFile
-        ? await storeEvidenceFile({
-            requestId,
-            ownerId: verificationContext.profileId,
-            area: "verification-advertiser",
-            file: evidenceFile,
-          })
-        : undefined;
+    const uploadTicket = uploadTicketId
+      ? await readPrivateFileUploadTicket({
+          ticketId: uploadTicketId,
+          actorProfileId: verificationContext.profileId,
+          purpose: "advertiser_verification",
+          resourceId: requestId,
+        })
+      : undefined;
+    const storedEvidenceFile = uploadTicket
+      ? uploadTicket.state === "finalized"
+        ? privateUploadTicketStoredFile(uploadTicket)
+        : await readAndVerifyPrivateUploadObject(uploadTicket)
+      : undefined;
+    pendingStoredEvidenceFile = storedEvidenceFile;
     const fallback = autoApprove
       ? undefined
       : buildAdvertiserVerificationFallback(businessAutomationCheck);
-    const record = await insertVerificationRequest({
+    const requestedRecord: VerificationRequestRecord = {
       id: requestId,
       target_type: "advertiser_organization",
       target_id: verificationContext.targetId,
@@ -33659,9 +37654,9 @@ app.post("/api/verification/advertiser", async (request, response, next) => {
       manager_phone: managerPhone,
       document_issue_date: storedEvidenceFile ? documentIssueDate : undefined,
       document_check_number: storedEvidenceFile ? documentCheckNumber : undefined,
-      evidence_file_name: storedEvidenceFile ? evidenceFile?.name : undefined,
-      evidence_file_mime: storedEvidenceFile ? evidenceFile?.type : undefined,
-      evidence_file_size: storedEvidenceFile ? evidenceFile?.size : undefined,
+      evidence_file_name: storedEvidenceFile?.file_name,
+      evidence_file_mime: storedEvidenceFile?.content_type,
+      evidence_file_size: storedEvidenceFile?.byte_size,
       evidence_snapshot_json: buildVerificationEvidenceSnapshot(requestId, storedEvidenceFile, {
         submitted_profile_id: verificationContext.profileId,
         organization_id: verificationContext.organizationId,
@@ -33685,13 +37680,51 @@ app.post("/api/verification/advertiser", async (request, response, next) => {
       reviewed_at: autoApprove ? now : undefined,
       created_at: now,
       updated_at: now,
-    });
+    };
+    const insertion = uploadTicketId
+      ? await insertVerificationRequestFromUploadTicket({
+          record: requestedRecord,
+          uploadTicketId,
+          actorProfileId: verificationContext.profileId,
+          purpose: "advertiser_verification",
+        })
+      : {
+          record: await insertVerificationRequest(requestedRecord),
+          idempotent: false,
+        };
+    const record = insertion.record;
 
-    response.status(201).json({
+    response.status(insertion.idempotent ? 200 : 201).json({
       outcome: autoApprove ? "approved" : "pending_manual_review",
       request: sanitizeVerificationRequestForSummary(record),
+      ...(insertion.idempotent ? { idempotent: true } : {}),
     });
   } catch (error) {
+    if (
+      pendingEvidenceRequestId &&
+      pendingEvidenceActorProfileId &&
+      pendingStoredEvidenceFile
+    ) {
+      const reconciliation = await reconcileTicketedVerificationPersistence({
+        requestId: pendingEvidenceRequestId,
+        actorProfileId: pendingEvidenceActorProfileId,
+        purpose: "advertiser_verification",
+        pendingFile: pendingStoredEvidenceFile,
+      });
+      if (reconciliation.state === "committed" && !response.headersSent) {
+        response.status(202).json({
+          outcome:
+            reconciliation.record.status === "approved"
+              ? "approved"
+              : "pending_manual_review",
+          request: sanitizeVerificationRequestForSummary(reconciliation.record),
+          persistence_reconciled: true,
+          side_effects_pending: true,
+        });
+        return;
+      }
+    }
+    if (sendPrivateFileUploadError(response, error)) return;
     next(error);
   }
 });
@@ -33766,10 +37799,25 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       request.body?.platform_access_token,
     );
     const note = normalizeOptionalText(request.body?.note);
-    const evidenceFile = parseEvidenceFile(request.body?.evidence_file);
-    const evidenceError = evidenceFile
-      ? validateEvidenceFile(evidenceFile)
-      : undefined;
+    if (
+      request.body &&
+      typeof request.body === "object" &&
+      "evidence_file" in request.body
+    ) {
+      response.status(422).json({
+        code: "UPLOAD_TICKET_INVALID",
+        error: "Inline verification evidence is no longer accepted",
+      });
+      return;
+    }
+    const uploadTicketId = normalizeOptionalText(request.body?.upload_ticket_id);
+    if (uploadTicketId && !isUuidText(uploadTicketId)) {
+      response.status(422).json({
+        code: "UPLOAD_TICKET_INVALID",
+        error: "Valid upload_ticket_id is required",
+      });
+      return;
+    }
 
     if (!subjectName || !submittedByEmail.includes("@")) {
       response.status(422).json({ error: "Valid name and email are required" });
@@ -33874,12 +37922,18 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       response.status(422).json({ error: `Valid ${productName} challenge code is required` });
       return;
     }
-    if (evidenceError) {
-      response.status(422).json({ error: evidenceError });
+    if (ownershipMethod === "screenshot_review" && !uploadTicketId) {
+      response.status(422).json({
+        code: "UPLOAD_TICKET_INVALID",
+        error: "Screenshot review requires an upload ticket",
+      });
       return;
     }
-    if (ownershipMethod === "screenshot_review" && !evidenceFile) {
-      response.status(422).json({ error: "Screenshot evidence is required for screenshot review" });
+    if (uploadTicketId && isInstagramDmMethod) {
+      response.status(422).json({
+        code: "UPLOAD_TICKET_INVALID",
+        error: "Instagram DM verification does not accept an upload ticket",
+      });
       return;
     }
 
@@ -33914,7 +37968,7 @@ app.post("/api/verification/influencer", async (request, response, next) => {
 
     const nowDate = new Date();
     const now = nowDate.toISOString();
-    const requestId = randomUUID();
+    const requestId = uploadTicketId ?? randomUUID();
     const instagramDmChallengeHash = isInstagramDmMethod
       ? hashInstagramDmChallengeCode(ownershipChallengeCode)
       : undefined;
@@ -33954,19 +38008,26 @@ app.post("/api/verification/influencer", async (request, response, next) => {
         http_status?: number;
       });
     const autoApprove =
+      !uploadTicketId &&
       !isInstagramDmMethod &&
       shouldAutoApprovePlatformVerification(platformAutomationCheck);
-    const storedEvidenceFile = evidenceFile
-      ? await storeEvidenceFile({
-          requestId,
-          ownerId: influencerAuth.profile.id,
-          area: "verification-influencer",
-          file: evidenceFile,
+    const uploadTicket = uploadTicketId
+      ? await readPrivateFileUploadTicket({
+          ticketId: uploadTicketId,
+          actorProfileId: influencerAuth.profile.id,
+          purpose: "influencer_verification",
+          resourceId: requestId,
         })
       : undefined;
+    const storedEvidenceFile = uploadTicket
+      ? uploadTicket.state === "finalized"
+        ? privateUploadTicketStoredFile(uploadTicket)
+        : await readAndVerifyPrivateUploadObject(uploadTicket)
+      : undefined;
     let record: VerificationRequestRecord;
+    let insertionIdempotent = false;
     try {
-      record = await insertVerificationRequest({
+      const requestedRecord: VerificationRequestRecord = {
         id: requestId,
         target_type: "influencer_account",
       target_id: targetId,
@@ -33989,9 +38050,9 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       ownership_challenge_expires_at: instagramDmChallengeExpiresAt,
       ownership_check_status: ownershipCheck.status,
       ownership_checked_at: ownershipCheck.checked_at,
-      evidence_file_name: evidenceFile?.name,
-      evidence_file_mime: evidenceFile?.type,
-      evidence_file_size: evidenceFile?.size,
+      evidence_file_name: storedEvidenceFile?.file_name,
+      evidence_file_mime: storedEvidenceFile?.content_type,
+      evidence_file_size: storedEvidenceFile?.byte_size,
       evidence_snapshot_json: buildVerificationEvidenceSnapshot(requestId, storedEvidenceFile, {
         ownership_verification: {
           contract_id: contractAccess.contractId,
@@ -34030,7 +38091,19 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       reviewed_at: autoApprove ? now : undefined,
       created_at: now,
       updated_at: now,
-      });
+      };
+      if (uploadTicketId) {
+        const insertion = await insertVerificationRequestFromUploadTicket({
+          record: requestedRecord,
+          uploadTicketId,
+          actorProfileId: influencerAuth.profile.id,
+          purpose: "influencer_verification",
+        });
+        record = insertion.record;
+        insertionIdempotent = insertion.idempotent;
+      } else {
+        record = await insertVerificationRequest(requestedRecord);
+      }
       if (platform === "instagram" && !isInstagramDmMethod) {
         await supersedeActiveInstagramDmChallengeForFallback(
           influencerAuth.profile.id,
@@ -34044,6 +38117,47 @@ app.post("/api/verification/influencer", async (request, response, next) => {
         });
       }
     } catch (error) {
+      const evidenceReconciliation = storedEvidenceFile
+        ? uploadTicketId
+          ? await reconcileTicketedVerificationPersistence({
+              requestId,
+              actorProfileId: influencerAuth.profile.id,
+              purpose: "influencer_verification",
+              pendingFile: storedEvidenceFile,
+            })
+          : await reconcileStoredVerificationEvidence({
+            requestId,
+            pendingFile: storedEvidenceFile,
+          })
+        : undefined;
+      if (evidenceReconciliation?.state === "committed") {
+        const committedRecord = evidenceReconciliation.record;
+        const committedChallengeCode = isInstagramDmMethod
+          ? decryptInstagramDmChallengeCode(
+              committedRecord.ownership_challenge_code_ciphertext ?? undefined,
+              committedRecord.id,
+            )
+          : undefined;
+        const committedChallengeState =
+          getInstagramDmChallengeState(committedRecord) === "retrying_provider"
+            ? "retrying_provider"
+            : "awaiting_dm";
+        response.status(202).json({
+          request: sanitizeVerificationRequestForSummary(committedRecord),
+          ...(isInstagramDmMethod && committedChallengeCode
+            ? {
+                instagram_dm_challenge: buildInstagramDmChallengeResponse(
+                  committedRecord,
+                  committedChallengeState,
+                  committedChallengeCode,
+                ),
+              }
+            : {}),
+          persistence_reconciled: true,
+          side_effects_pending: true,
+        });
+        return;
+      }
       if (isInstagramDmMethod) {
         const activeChallenge = await readActiveInstagramDmChallenge(
           influencerAuth.profile.id,
@@ -34060,13 +38174,18 @@ app.post("/api/verification/influencer", async (request, response, next) => {
             getInstagramDmChallengeState(activeChallenge) === "retrying_provider"
               ? "retrying_provider"
               : "awaiting_dm";
-          response.status(200).json({
+          response
+            .status(evidenceReconciliation?.state === "retained" ? 202 : 200)
+            .json({
             request: sanitizeVerificationRequestForSummary(activeChallenge),
             instagram_dm_challenge: buildInstagramDmChallengeResponse(
               activeChallenge,
               activeState,
               activeCode,
             ),
+            ...(evidenceReconciliation?.state === "retained"
+              ? { evidence_cleanup_pending: true }
+              : {}),
           });
           return;
         }
@@ -34074,8 +38193,9 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       throw error;
     }
 
-    response.status(201).json({
+    response.status(insertionIdempotent ? 200 : 201).json({
       request: sanitizeVerificationRequestForSummary(record),
+      ...(insertionIdempotent ? { idempotent: true } : {}),
       ...(isInstagramDmMethod
         ? {
             instagram_dm_challenge: buildInstagramDmChallengeResponse(
@@ -34248,6 +38368,17 @@ app.post("/api/admin/verification-requests/:id/automation-check", async (request
 
 app.get("/api/admin/verification-requests/:id/evidence", async (request, response, next) => {
   try {
+    setPrivateAuthResponseHeaders(response);
+    response.setHeader("Pragma", "no-cache");
+    const throttle = await consumeSensitiveEndpointRateLimit(
+      request,
+      "admin_verification_evidence_download",
+      request.params.id,
+    );
+    if (throttle.blocked) {
+      sendSensitiveRateLimitResponse(response, throttle);
+      return;
+    }
     const admin = await requireAdminSession(request, response);
     if (!admin) return;
 
@@ -34273,29 +38404,60 @@ app.get("/api/admin/verification-requests/:id/evidence", async (request, respons
         return;
       }
 
-      response.setHeader("Content-Type", storedFile.content_type);
-      response.setHeader("Cache-Control", "no-store");
-      response.setHeader(
-        "Content-Disposition",
-        `attachment; filename="${sanitizeStorageSegment(storedFile.file_name)}"`,
-      );
       await appendVerificationEvidenceAccessAudit(record, request, admin);
-      response.send(fileBuffer);
+      setPrivateDownloadHeaders(response, {
+        contentType: storedFile.content_type,
+        contentDisposition: `attachment; filename="${sanitizeStorageSegment(
+          storedFile.file_name,
+        )}"`,
+      });
+      await streamPrivateDownloadBuffer(response, fileBuffer);
       return;
     }
 
-    const legacyDataUrl = record.evidence_snapshot_json?.file_data_url;
+    const evidenceFileSnapshot = record.evidence_snapshot_json?.evidence_file;
+    const usesLegacyPrivateTable =
+      evidenceFileSnapshot !== null &&
+      typeof evidenceFileSnapshot === "object" &&
+      !Array.isArray(evidenceFileSnapshot) &&
+      (evidenceFileSnapshot as Record<string, unknown>).provider ===
+        "legacy_private_table";
+    const legacyDataUrl = usesLegacyPrivateTable
+      ? await readLegacyVerificationEvidenceDataUrl(record.id)
+      : record.evidence_snapshot_json?.file_data_url;
     if (typeof legacyDataUrl === "string") {
       const { contentType, buffer } = dataUrlToBuffer(legacyDataUrl);
-      if (!assertDeclaredMimeMatchesContent(contentType, buffer, evidenceFileMimeTypes)) {
+      if (
+        buffer.byteLength < 1 ||
+        buffer.byteLength > maxVerificationFileSize ||
+        !assertDeclaredMimeMatchesContent(
+          contentType,
+          buffer,
+          evidenceFileMimeTypes,
+        )
+      ) {
         response.status(415).json({ error: "Legacy evidence file type is not allowed" });
         return;
       }
-      response.setHeader("Content-Type", contentType);
-      response.setHeader("Cache-Control", "no-store");
-      response.setHeader("Content-Disposition", `attachment; filename="${record.id}-evidence.${extensionForMimeType(contentType)}"`);
+      if (
+        (hasText(record.evidence_file_mime) &&
+          record.evidence_file_mime !== contentType) ||
+        (typeof record.evidence_file_size === "number" &&
+          record.evidence_file_size !== buffer.byteLength)
+      ) {
+        response.status(409).json({ error: "Legacy evidence file integrity check failed" });
+        return;
+      }
       await appendVerificationEvidenceAccessAudit(record, request, admin);
-      response.send(buffer);
+      const legacyFileName = sanitizeStorageSegment(
+        normalizeOptionalText(record.evidence_file_name) ??
+          `${record.id}-evidence.${extensionForMimeType(contentType)}`,
+      );
+      setPrivateDownloadHeaders(response, {
+        contentType,
+        contentDisposition: `attachment; filename="${legacyFileName}"`,
+      });
+      await streamPrivateDownloadBuffer(response, buffer);
       return;
     }
 
@@ -34324,8 +38486,10 @@ app.patch("/api/admin/verification-requests/:id", async (request, response, next
     const reviewerNote = normalizeOptionalText(request.body?.reviewer_note);
     const reviewedByName = admin.profile.name;
 
-    if (!verificationStatuses.has(status)) {
-      response.status(422).json({ error: "Valid verification status is required" });
+    if (status !== "approved" && status !== "rejected") {
+      response.status(422).json({
+        error: "Verification review must approve or reject a pending request",
+      });
       return;
     }
 
@@ -34335,6 +38499,12 @@ app.patch("/api/admin/verification-requests/:id", async (request, response, next
     );
     if (!existingRecord) {
       response.status(404).json({ error: "Verification request not found" });
+      return;
+    }
+    if (existingRecord.status !== "pending") {
+      response.status(409).json({
+        error: "This verification request has already been reviewed",
+      });
       return;
     }
     if (
@@ -34363,7 +38533,7 @@ app.patch("/api/admin/verification-requests/:id", async (request, response, next
       return;
     }
 
-    const record = await updateVerificationRequestReview({
+    const record = await reviewVerificationRequestWithLock({
       id: request.params.id,
       status: status as VerificationStatus,
       reviewerNote,
@@ -34372,16 +38542,9 @@ app.patch("/api/admin/verification-requests/:id", async (request, response, next
     });
 
     if (!record) {
-      if (
-        existingRecord.ownership_verification_method === "instagram_dm_code"
-      ) {
-        response.status(409).json({
-          error:
-            "Instagram DM verification changed or a newer request became authoritative",
-        });
-        return;
-      }
-      response.status(404).json({ error: "Verification request not found" });
+      response.status(409).json({
+        error: "Verification review changed before this decision was saved",
+      });
       return;
     }
 
@@ -34465,6 +38628,9 @@ app.get("/api/contracts/:id/deliverables", async (request, response, next) => {
 
 app.post("/api/contracts/:id/post-link", async (request, response, next) => {
   try {
+    if (!requireAuthoritativeContractMutationId(response, request.params.id)) return;
+    response.setHeader("Cache-Control", "private, no-store");
+    response.setHeader("Vary", "Cookie");
     const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "post_link_submit",
@@ -34475,25 +38641,11 @@ app.post("/api/contracts/:id/post-link", async (request, response, next) => {
       return;
     }
 
-    const postLink = normalizeUrlValue(
-      request.body?.post_link ?? request.body?.url,
-    );
-
-    if (!postLink) {
-      response.status(422).json({
-        error: "Submitted post link must be an http(s) URL",
-      });
-      return;
-    }
-
     const influencerAuth = await requireInfluencerSession(request, response);
     if (!influencerAuth) return;
-
-    const {
-      store,
-      existingContract: contract,
-    } = await readContractWriteContext(request.params.id);
-
+    const { existingContract: contract } = await readContractWriteContext(
+      request.params.id,
+    );
     if (!contract) {
       response.status(404).json({ error: "Contract not found" });
       return;
@@ -34502,73 +38654,156 @@ app.post("/api/contracts/:id/post-link", async (request, response, next) => {
       response.status(403).json({ error: "이 계약을 볼 권한이 없습니다." });
       return;
     }
-    if (contract.status !== "SIGNED") {
-      response.status(409).json({
-        error: "Contract must be signed before post link can be submitted",
-      });
-      return;
-    }
 
-    const now = new Date().toISOString();
-    const postLinkAuditEventId = `post_link_submitted:${sha256Hex(postLink)}`;
-    const postLinkEventId = stableUuid(
-      `${contract.id}:event:${postLinkAuditEventId}`,
-    );
-    const existingAuditEvents = contract.audit_events ?? [];
-    const updatedContract = normalizeContract({
-      ...contract,
-      post_link: postLink,
-      workflow: {
-        ...contract.workflow,
-        next_actor: contract.workflow?.next_actor ?? "system",
-        next_action:
-          contract.workflow?.next_action ??
-          "전자서명 완료 후 콘텐츠 제출을 기다리는 중입니다.",
-        risk_level: contract.workflow?.risk_level ?? "low",
-        last_message: "인플루언서가 콘텐츠 URL을 제출했습니다.",
-      },
-      audit_events:
-        existingAuditEvents.some((event) => event.id === postLinkAuditEventId)
-          ? existingAuditEvents
-          : [
-              ...existingAuditEvents,
-              {
-                id: postLinkAuditEventId,
-                actor: "influencer",
-                action: "post_link_submitted",
-                description: "인플루언서가 콘텐츠 URL을 제출했습니다.",
-                created_at: now,
-              },
-            ],
-      updated_at: now,
-    });
-
-    await writeStore(upsertContractIntoStore(store, updatedContract));
-    await insertContractEvent({
-      contractId: contract.id,
-      actorProfileId: influencerAuth.profile.id,
-      actorRole: "influencer",
-      actorDisplayName: influencerAuth.profile.name,
-      eventType: "post_link_submitted",
-      targetType: "contract",
-      targetId: contract.id,
-      payload: { has_url: true },
-      request,
-      eventId: postLinkEventId,
-      ignoreDuplicate: true,
-    });
-
-    response.json({
-      contract: redactContractForClient(updatedContract, "influencer"),
-      post_link: postLink,
+    response.status(410).json({
+      code: "DELIVERABLE_ENDPOINT_REQUIRED",
+      error: "콘텐츠 URL과 파일은 통합 콘텐츠 제출에서 접수해 주세요.",
     });
   } catch (error) {
+    if (sendPrivateFileUploadError(response, error)) return;
     next(error);
   }
 });
 
+
+app.post(
+  "/api/contracts/:id/deliverables/upload-ticket",
+  async (request, response, next) => {
+    response.setHeader("Cache-Control", "private, no-store");
+    response.setHeader("Vary", "Cookie");
+    try {
+      if (!requireAuthoritativeContractMutationId(response, request.params.id)) return;
+      if (!useSupabase) {
+        response.status(503).json({
+          code: "UPLOAD_NOT_READY",
+          error: "Private upload storage is unavailable",
+        });
+        return;
+      }
+      const throttle = await consumeSensitiveEndpointRateLimit(
+        request,
+        "deliverable_upload_ticket",
+        request.params.id,
+      );
+      if (throttle.blocked) {
+        sendSensitiveRateLimitResponse(response, throttle);
+        return;
+      }
+      const influencerAuth = await requireInfluencerSession(request, response);
+      if (!influencerAuth) return;
+      const actorThrottle = await consumeSensitiveEndpointSubjectRateLimit(
+        "deliverable_upload_ticket_actor",
+        influencerAuth.profile.id,
+      );
+      if (actorThrottle.blocked) {
+        sendSensitiveRateLimitResponse(response, actorThrottle);
+        return;
+      }
+      const { existingContract: contract } = await readContractWriteContext(
+        request.params.id,
+      );
+      if (!contract) {
+        response.status(404).json({ error: "Contract not found" });
+        return;
+      }
+      if (!canInfluencerAccessLegacyContract(influencerAuth, contract)) {
+        response.status(403).json({ error: "Contract access is not allowed" });
+        return;
+      }
+      if (contract.status !== "SIGNED") {
+        response.status(409).json({
+          code: "UPLOAD_TICKET_INVALID",
+          error: "Contract must be signed before evidence can be uploaded",
+        });
+        return;
+      }
+      const submissionId = normalizeOptionalText(request.body?.submission_id);
+      if (!submissionId || !isUuidText(submissionId)) {
+        response.status(422).json({
+          code: "UPLOAD_TICKET_INVALID",
+          error: "Valid submission_id is required",
+        });
+        return;
+      }
+      const bundle = await readContractDeliverableBundle(contract);
+      const requirementId = normalizeOptionalText(request.body?.requirement_id);
+      const requirement = requirementId
+        ? bundle.requirements.find((candidate) => candidate.id === requirementId)
+        : bundle.requirements[0];
+      if (bundle.requirements.length > 0 && !requirement) {
+        response.status(422).json({
+          code: "UPLOAD_TICKET_INVALID",
+          error: "Valid deliverable requirement is required",
+        });
+        return;
+      }
+      const declaredSize = Number(request.body?.file?.size);
+      if (Number.isFinite(declaredSize) && declaredSize > maxDeliverableFileSize) {
+        response.status(413).json({
+          code: "UPLOAD_STORAGE_LIMIT",
+          error: "Proof file must be 10MB or smaller",
+        });
+        return;
+      }
+      const descriptor = parsePrivateFileUploadDescriptor(request.body?.file);
+      if (!descriptor) {
+        response.status(422).json({
+          code: "UPLOAD_TICKET_INVALID",
+          error: "Valid private file metadata is required",
+        });
+        return;
+      }
+      const existing = await readSupabaseRows<Pick<SupabaseDeliverableRow, "id">>(
+        "deliverables",
+        `?select=id&id=eq.${encodeURIComponent(
+          submissionId,
+        )}&contract_id=eq.${encodeURIComponent(contract.id)}&limit=1`,
+        "deliverable upload ticket idempotency lookup",
+      );
+      if (existing.length > 0) {
+        response.status(409).json({
+          code: "UPLOAD_TICKET_INVALID",
+          error: "Deliverable submission is already finalized",
+        });
+        return;
+      }
+      response.json(
+        await issuePrivateFileUploadTicket({
+          ticketId: submissionId,
+          purpose: "deliverable",
+          actorProfileId: influencerAuth.profile.id,
+          resourceId: submissionId,
+          contractId: contract.id,
+          requirementId: requirement?.id,
+          reservationId: stableUuid(
+            `private-upload-reservation:${submissionId}`,
+          ),
+          descriptor,
+        }),
+      );
+    } catch (error) {
+      if (sendPrivateFileUploadError(response, error)) return;
+      if (!response.headersSent) {
+        response.status(503).json({
+          code: "UPLOAD_NOT_READY",
+          error: "Private upload preparation is temporarily unavailable",
+        });
+        return;
+      }
+      next(error);
+    }
+  },
+);
+
 app.post("/api/contracts/:id/deliverables", async (request, response, next) => {
+  let pendingStoredFile: StoredPrivateFile | undefined;
+  let pendingDeliverableId: string | undefined;
+  let pendingSubmissionIntentHash: string | undefined;
+  let pendingQuotaReservationId: string | undefined;
+  let pendingUploadTicketId: string | undefined;
+  let deliverableCommitted = false;
   try {
+    if (!requireAuthoritativeContractMutationId(response, request.params.id)) return;
     response.setHeader("Cache-Control", "private, no-store");
     response.setHeader("Vary", "Cookie");
     const throttle = await consumeSensitiveEndpointRateLimit(
@@ -34588,6 +38823,15 @@ app.post("/api/contracts/:id/deliverables", async (request, response, next) => {
 
     const influencerAuth = await requireInfluencerSession(request, response);
     if (!influencerAuth) return;
+
+    const actorThrottle = await consumeSensitiveEndpointSubjectRateLimit(
+      "deliverable_submit_actor",
+      influencerAuth.profile.id,
+    );
+    if (actorThrottle.blocked) {
+      sendSensitiveRateLimitResponse(response, actorThrottle);
+      return;
+    }
 
     const { existingContract: contract } = await readContractWriteContext(
       request.params.id,
@@ -34623,10 +38867,42 @@ app.post("/api/contracts/:id/deliverables", async (request, response, next) => {
       "콘텐츠";
     const url = normalizeUrlValue(request.body?.url);
     const note = normalizeOptionalText(request.body?.note);
-    const evidenceFile = parseEvidenceFile(request.body?.evidence_file);
-    const evidenceError = validateDeliverableFile(evidenceFile);
+    if (
+      request.body &&
+      typeof request.body === "object" &&
+      "evidence_file" in request.body
+    ) {
+      response.status(422).json({
+        code: "UPLOAD_TICKET_INVALID",
+        error: "Inline proof files are no longer accepted",
+      });
+      return;
+    }
+    const uploadTicketId = normalizeOptionalText(
+      request.body?.upload_ticket_id,
+    );
+    if (uploadTicketId && !isUuid(uploadTicketId)) {
+      response.status(422).json({
+        code: "UPLOAD_TICKET_INVALID",
+        error: "Valid upload_ticket_id is required",
+      });
+      return;
+    }
 
-    if (!url && !evidenceFile) {
+    if (title.length > maxDeliverableTitleLength) {
+      response.status(422).json({ error: "콘텐츠 제목은 120자 이내로 입력해 주세요." });
+      return;
+    }
+    if (note && note.length > maxDeliverableNoteLength) {
+      response.status(422).json({ error: "콘텐츠 메모는 2,000자 이내로 입력해 주세요." });
+      return;
+    }
+    if (url && url.length > maxDeliverableUrlLength) {
+      response.status(422).json({ error: "콘텐츠 URL이 너무 깁니다." });
+      return;
+    }
+
+    if (!url && !uploadTicketId) {
       response.status(422).json({ error: "Content URL or proof file is required" });
       return;
     }
@@ -34634,94 +38910,213 @@ app.post("/api/contracts/:id/deliverables", async (request, response, next) => {
       response.status(422).json({ error: "Content URL must be http or https" });
       return;
     }
-    if (evidenceError) {
-      response.status(422).json({ error: evidenceError });
+    const requestedSubmissionId = normalizeOptionalText(
+      request.body?.submission_id,
+    );
+    if (requestedSubmissionId && !isUuid(requestedSubmissionId)) {
+      response.status(422).json({
+        code: "DELIVERABLE_SUBMISSION_ID_INVALID",
+        error: "콘텐츠 제출 식별자가 올바르지 않습니다. 다시 시도해 주세요.",
+      });
       return;
+    }
+    if (
+      uploadTicketId &&
+      (!requestedSubmissionId || requestedSubmissionId !== uploadTicketId)
+    ) {
+      response.status(409).json({
+        code: "UPLOAD_TICKET_INVALID",
+        error: "Upload ticket does not match the submission",
+      });
+      return;
+    }
+    const deliverableId =
+      requestedSubmissionId ?? uploadTicketId ?? randomUUID();
+    let storedFile: StoredPrivateFile | undefined;
+    let uploadTicket: DirectsignPrivateFileUploadTicket | undefined;
+    if (uploadTicketId) {
+      uploadTicket = await readPrivateFileUploadTicket({
+        ticketId: uploadTicketId,
+        actorProfileId: influencerAuth.profile.id,
+        purpose: "deliverable",
+        resourceId: deliverableId,
+        contractId: contract.id,
+        requirementId: requirement?.id,
+      });
+      if (!uploadTicket.reservation_id) {
+        throw new PrivateFileUploadHttpError(
+          409,
+          "UPLOAD_TICKET_INVALID",
+          "Upload ticket has no quota reservation",
+        );
+      }
+      storedFile =
+        uploadTicket.state === "finalized"
+          ? privateUploadTicketStoredFile(uploadTicket)
+          : await readAndVerifyPrivateUploadObject(uploadTicket);
+      pendingStoredFile = storedFile;
+      pendingUploadTicketId = uploadTicketId;
+      pendingQuotaReservationId = uploadTicket.reservation_id;
+    }
+    const submissionIntentHash = sha256Hex(
+      JSON.stringify({
+        contract_id: contract.id,
+        requirement_id: requirement?.id ?? null,
+        creator_profile_id: influencerAuth.profile.id,
+        title,
+        url: url ?? null,
+        note: note ?? null,
+        file: storedFile
+          ? {
+              type: storedFile.content_type,
+              size: storedFile.byte_size,
+              content_hash: storedFile.sha256,
+            }
+          : null,
+      }),
+    );
+    pendingSubmissionIntentHash = submissionIntentHash;
+    if (requestedSubmissionId) {
+      const existingSubmissions = await readSupabaseRows<SupabaseDeliverableRow>(
+        "deliverables",
+        `?select=*&id=eq.${encodeURIComponent(
+          requestedSubmissionId,
+        )}&contract_id=eq.${encodeURIComponent(contract.id)}&limit=1`,
+        "deliverable idempotency lookup",
+      );
+      const existingSubmission = existingSubmissions[0];
+      if (existingSubmission) {
+        if (
+          existingSubmission.creator_profile_id !== influencerAuth.profile.id ||
+          existingSubmission.metadata?.submission_intent_hash !==
+            submissionIntentHash
+        ) {
+          response.status(409).json({
+            code: "DELIVERABLE_SUBMISSION_CONFLICT",
+            error: "콘텐츠 제출 식별자가 이미 사용되었습니다.",
+          });
+          return;
+        }
+        if (!uploadTicketId) {
+          const currentBundle = await readContractDeliverableBundle(contract);
+          response.json({
+            deliverable: sanitizeDeliverableForClient(existingSubmission),
+            ...buildDeliverableResponse(contract, currentBundle),
+            idempotent: true,
+          });
+          return;
+        }
+      }
+    }
+
+    if (!uploadTicket) {
+      const uploadUsage = await readDeliverableUploadUsage(
+        contract.id,
+        influencerAuth.profile.id,
+      );
+      if (uploadUsage.deliverableCount >= maxDeliverablesPerContract) {
+      response.status(409).json({
+        code: "DELIVERABLE_LIMIT_REACHED",
+        error: "이 계약의 콘텐츠 제출 한도에 도달했습니다.",
+      });
+      return;
+      }
+      if (
+        uploadUsage.contractBytes > maxDeliverableBytesPerContract ||
+        uploadUsage.creatorDailyBytes > maxDeliverableBytesPerCreatorPerDay
+      ) {
+      response.status(413).json({
+        code: "DELIVERABLE_STORAGE_LIMIT_REACHED",
+        error: "콘텐츠 증빙 저장 한도를 초과했습니다.",
+      });
+      return;
+      }
     }
 
     const now = new Date().toISOString();
-    const deliverableId = randomUUID();
-    const storedFile = evidenceFile
-      ? await storeDeliverableFile({
+    const quotaReservationId = uploadTicket?.reservation_id ?? randomUUID();
+    const quotaReservation = uploadTicket
+      ? { outcome: "reserved" as const }
+      : await reserveDeliverableUploadQuota({
+          reservationId: quotaReservationId,
           contractId: contract.id,
-          deliverableId,
-          file: evidenceFile,
-        })
-      : undefined;
-    const [deliverable] = await insertSupabaseRowsReturning<SupabaseDeliverableRow>(
-      "deliverables",
-      [
-        {
-          id: deliverableId,
-          contract_id: contract.id,
-          requirement_id: requirement?.id,
-          creator_profile_id: influencerAuth.profile.id,
-          title,
-          url,
-          submitted_at: now,
-          review_status: "submitted",
-          metadata: {
-            note,
-            proof_file: storedFile,
-            submitted_ip: getClientIp(request),
-            submitted_user_agent: request.header("user-agent") ?? "unknown",
-          },
-          created_at: now,
-          updated_at: now,
-        },
-      ],
-      "deliverable",
-    );
-
-    if (!deliverable) {
-      throw new Error("Deliverable insert did not return a row");
+          creatorProfileId: influencerAuth.profile.id,
+          byteSize: 0,
+        });
+    if (quotaReservation.outcome === "deliverable_limit") {
+      response.status(409).json({
+        code: "DELIVERABLE_LIMIT_REACHED",
+        error: "이 계약의 콘텐츠 제출 한도에 도달했습니다.",
+      });
+      return;
     }
-
-    if (storedFile) {
-      await insertSupabaseRowsReturning(
-        "contract_files",
-        [
-          {
-            id: randomUUID(),
-            contract_id: contract.id,
-            uploaded_by_profile_id: influencerAuth.profile.id,
-            related_type: "deliverable",
-            related_id: deliverable.id,
-            file_type: "evidence",
-            bucket: storedFile.bucket,
-            storage_path: storedFile.path,
-            file_name: storedFile.file_name,
-            content_type: storedFile.content_type,
-            byte_size: storedFile.byte_size,
-            file_hash: storedFile.sha256,
-            created_at: now,
-          },
-        ],
-        "contract file",
+    if (quotaReservation.outcome === "storage_limit") {
+      response.status(413).json({
+        code: "DELIVERABLE_STORAGE_LIMIT_REACHED",
+        error: "콘텐츠 증빙 저장 한도를 초과했습니다.",
+      });
+      return;
+    }
+    if (quotaReservation.outcome !== "reserved") {
+      throw new ContractVersionConflictError();
+    }
+    pendingQuotaReservationId = quotaReservationId;
+    pendingDeliverableId = deliverableId;
+    pendingStoredFile = storedFile;
+    const deliverableEventId = stableUuid(
+      `${contract.id}:event:deliverable:${deliverableId}:submitted:${now}`,
+    );
+    const readyEventId = stableUuid(
+      `${contract.id}:event:deliverables_ready_to_close`,
+    );
+    const finalization = await finalizeDeliverableSubmissionAtomically({
+      contract,
+      deliverableId,
+      requirementId: requirement?.id,
+      creatorProfileId: influencerAuth.profile.id,
+      creatorDisplayName: influencerAuth.profile.name,
+      title,
+      url,
+      note,
+      submissionIntentHash,
+      storedFile,
+      uploadTicketId,
+      reservationId: quotaReservationId,
+      submittedEventId: deliverableEventId,
+      readyEventId,
+      occurredAt: now,
+      request,
+    });
+    if (finalization.outcome === "upload_ticket_invalid") {
+      throw new PrivateFileUploadHttpError(
+        409,
+        "UPLOAD_TICKET_INVALID",
+        "Upload ticket is invalid",
       );
     }
+    if (finalization.outcome === "upload_ticket_expired") {
+      throw new PrivateFileUploadHttpError(
+        409,
+        "UPLOAD_TICKET_EXPIRED",
+        "Upload ticket has expired",
+      );
+    }
+    if (
+      finalization.outcome !== "submitted" &&
+      finalization.outcome !== "idempotent"
+    ) {
+      throw new ContractVersionConflictError();
+    }
+    deliverableCommitted = true;
+    pendingQuotaReservationId = undefined;
 
-    await insertContractEvent({
-      contractId: contract.id,
-      actorProfileId: influencerAuth.profile.id,
-      actorRole: "influencer",
-      actorDisplayName: influencerAuth.profile.name,
-      eventType: "deliverable_submitted",
-      targetType: "deliverable",
-      targetId: deliverable.id,
-      payload: {
-        requirement_id: requirement?.id,
-        title,
-        has_url: Boolean(url),
-        has_file: Boolean(storedFile),
-        transition_occurred_at: now,
-      },
-      request,
-      eventId: stableUuid(
-        `${contract.id}:event:deliverable:${deliverable.id}:submitted:${now}`,
-      ),
-      ignoreDuplicate: true,
-    });
+    const updatedBundle = await readContractDeliverableBundle(contract);
+    const deliverable = updatedBundle.deliverables.find(
+      (candidate) => candidate.id === deliverableId,
+    );
+    if (!deliverable) {
+      throw new Error("Committed deliverable could not be reloaded");
+    }
     const instagramMetricsEnrichment =
       url && normalizeInstagramReelUrl(url)
         ? refreshDeliverableInstagramReelMetrics({
@@ -34732,14 +39127,158 @@ app.post("/api/contracts/:id/deliverables", async (request, response, next) => {
     if (instagramMetricsEnrichment) {
       waitUntil(instagramMetricsEnrichment);
     }
-    await updateContractDeliverableWorkflow(contract.id, request);
-
-    const updatedBundle = await readContractDeliverableBundle(contract);
-    response.status(201).json({
+    response.status(finalization.outcome === "idempotent" ? 200 : 201).json({
       deliverable: sanitizeDeliverableForClient(deliverable),
       ...buildDeliverableResponse(contract, updatedBundle),
+      ...(finalization.outcome === "idempotent" ? { idempotent: true } : {}),
     });
   } catch (error) {
+    let submissionStateChecked = false;
+    let submissionConflict = false;
+    let reconciledDeliverable: SupabaseDeliverableRow | undefined;
+    if (!deliverableCommitted && pendingDeliverableId) {
+      try {
+        const committedRows = await readSupabaseRows<SupabaseDeliverableRow>(
+          "deliverables",
+          `?select=*&id=eq.${encodeURIComponent(
+            pendingDeliverableId,
+          )}&contract_id=eq.${encodeURIComponent(request.params.id)}&limit=1`,
+          "deliverable finalization reconciliation",
+        );
+        reconciledDeliverable = committedRows[0];
+        let storedFileMatches = !pendingStoredFile;
+        if (reconciledDeliverable && pendingStoredFile) {
+          const committedFiles = await readSupabaseRows<SupabaseContractFileRow>(
+            "contract_files",
+            `?select=*&contract_id=eq.${encodeURIComponent(
+              request.params.id,
+            )}&related_type=eq.deliverable&related_id=eq.${encodeURIComponent(
+              pendingDeliverableId,
+            )}&limit=4`,
+            "deliverable file finalization reconciliation",
+          );
+          storedFileMatches = committedFiles.some(
+            (file) =>
+              file.bucket === pendingStoredFile?.bucket &&
+              file.storage_path === pendingStoredFile.path &&
+              file.content_type === pendingStoredFile.content_type &&
+              file.file_hash === pendingStoredFile.sha256 &&
+              Number(file.byte_size ?? -1) === pendingStoredFile.byte_size,
+          );
+        }
+        const intentMatches =
+          Boolean(reconciledDeliverable) &&
+          reconciledDeliverable?.metadata?.submission_intent_hash ===
+            pendingSubmissionIntentHash;
+        submissionStateChecked = true;
+        deliverableCommitted = Boolean(
+          reconciledDeliverable && intentMatches && storedFileMatches,
+        );
+        submissionConflict = Boolean(
+          reconciledDeliverable && (!intentMatches || !storedFileMatches),
+        );
+      } catch (reconciliationError) {
+        console.warn(
+          `[${productName}] deliverable finalization reconciliation failed: ${operationalErrorLabel(
+            reconciliationError,
+          )}`,
+        );
+      }
+    }
+    if (
+      !deliverableCommitted &&
+      submissionStateChecked &&
+      !pendingUploadTicketId
+    ) {
+      const cleanupTasks: Array<Promise<unknown>> = [];
+      if (pendingStoredFile) {
+        cleanupTasks.push(deleteStoredPrivateFile(pendingStoredFile));
+      }
+      if (pendingQuotaReservationId) {
+        cleanupTasks.push(
+          releaseDeliverableUploadQuota(pendingQuotaReservationId),
+        );
+      }
+      const cleanupResults = await Promise.allSettled(cleanupTasks);
+      if (cleanupResults.some((result) => result.status === "rejected")) {
+        console.warn(`[${productName}] deliverable rollback cleanup was incomplete`);
+      }
+    } else if (!deliverableCommitted && pendingDeliverableId) {
+      console.warn(
+        `[${productName}] retained unconfirmed deliverable storage for reconciliation after an ambiguous RPC failure`,
+      );
+      void enqueueOperationalAlert({
+        kind: "auth_health",
+        action: "provider_degraded",
+        severity: "urgent",
+        subject_type: "deliverable_finalization",
+        subject_id: pendingDeliverableId,
+        title: "콘텐츠 제출 저장 상태 확인 필요",
+        body: "콘텐츠 제출 RPC 결과를 확인하지 못해 저장소 증빙을 보존했습니다.",
+        mobile_path: "/admin/mobile",
+        dashboard_path: "/admin",
+        dedupe_key: `deliverable_finalization:${pendingDeliverableId}`,
+        decision_reason: operationalErrorLabel(error),
+        metadata_json: {
+          contract_id: request.params.id,
+          deliverable_id: pendingDeliverableId,
+        },
+      }).catch(() => undefined);
+    }
+    if (deliverableCommitted && reconciledDeliverable && !response.headersSent) {
+      if (pendingQuotaReservationId && !pendingUploadTicketId) {
+        await releaseDeliverableUploadQuota(pendingQuotaReservationId).catch(
+          () => undefined,
+        );
+      }
+      try {
+        const reconciledContract = await readContractById(request.params.id);
+        if (reconciledContract) {
+          const reconciledBundle = await readContractDeliverableBundle(
+            reconciledContract,
+          );
+          response.status(201).json({
+            deliverable: sanitizeDeliverableForClient(reconciledDeliverable),
+            ...buildDeliverableResponse(reconciledContract, reconciledBundle),
+            reconciled: true,
+          });
+          return;
+        }
+      } catch (reloadError) {
+        console.warn(
+          `[${productName}] committed deliverable reload failed: ${operationalErrorLabel(
+            reloadError,
+          )}`,
+        );
+      }
+      response.status(202).json({
+        code: "DELIVERABLE_COMMITTED",
+        deliverable_id: reconciledDeliverable.id,
+        reconciled: true,
+      });
+      return;
+    }
+    if (submissionConflict) {
+      response.status(409).json({
+        code: "DELIVERABLE_SUBMISSION_CONFLICT",
+        error: "콘텐츠 제출 식별자가 다른 제출에 이미 사용되었습니다.",
+      });
+      return;
+    }
+    if (sendPrivateFileUploadError(response, error)) return;
+    if (
+      error instanceof ContractVersionConflictError ||
+      (error instanceof Error &&
+        /DIRECTSIGN_CONTRACT_NOT_ACTIVE|could not serialize access/i.test(
+          error.message,
+        ))
+    ) {
+      response.status(409).json({
+        code: "CONTRACT_VERSION_CHANGED",
+        error: "계약 상태가 변경되었습니다. 최신 내용을 다시 확인해 주세요.",
+      });
+      return;
+    }
     next(error);
   }
 });
@@ -34748,6 +39287,7 @@ app.post(
   "/api/contracts/:id/deliverables/:deliverableId/instagram-metrics/refresh",
   async (request, response, next) => {
     try {
+      if (!requireAuthoritativeContractMutationId(response, request.params.id)) return;
       response.setHeader("Cache-Control", "private, no-store");
       response.setHeader("Vary", "Cookie");
       const throttle = await consumeSensitiveEndpointRateLimit(
@@ -34805,13 +39345,29 @@ app.post(
         ...buildDeliverableResponse(contract, updatedBundle),
       });
     } catch (error) {
+      if (
+        error instanceof ContractVersionConflictError ||
+        (error instanceof Error &&
+          /DIRECTSIGN_CONTRACT_NOT_ACTIVE|could not serialize access/i.test(
+            error.message,
+          ))
+      ) {
+        response.status(409).json({
+          code: "CONTRACT_VERSION_CHANGED",
+          error: "계약 상태가 변경되었습니다. 최신 내용을 다시 확인해 주세요.",
+        });
+        return;
+      }
       next(error);
     }
   },
 );
 
 app.patch("/api/contracts/:id/deliverables/:deliverableId", async (request, response, next) => {
+  let reviewCommitAttempted = false;
+  let requestedReviewStatus: DeliverableReviewStatus | undefined;
   try {
+    if (!requireAuthoritativeContractMutationId(response, request.params.id)) return;
     response.setHeader("Cache-Control", "private, no-store");
     response.setHeader("Vary", "Cookie");
     const throttle = await consumeSensitiveEndpointRateLimit(
@@ -34874,95 +39430,133 @@ app.patch("/api/contracts/:id/deliverables/:deliverableId", async (request, resp
       response.status(404).json({ error: "Deliverable not found" });
       return;
     }
-    if (deliverable.review_status === status) {
-      const transitionOccurredAt = normalizeOptionalText(
-        deliverable.reviewed_at ?? deliverable.updated_at,
-      );
-      if (
-        transitionOccurredAt &&
-        deliverable.reviewed_by_profile_id &&
-        isUuid(deliverable.reviewed_by_profile_id)
-      ) {
-        const eventType = deliverableReviewEventType(status);
-        await insertContractEvent({
-          contractId: contract.id,
-          actorProfileId: deliverable.reviewed_by_profile_id,
-          actorRole: "advertiser",
-          actorDisplayName:
-            deliverable.reviewed_by_profile_id === advertiserAuth.profile.id
-              ? advertiserAuth.profile.name
-              : "광고주",
-          eventType,
-          targetType: "deliverable",
-          targetId: deliverable.id,
-          payload: {
-            review_status: status,
-            review_comment: deliverable.review_comment,
-            transition_occurred_at: transitionOccurredAt,
-          },
-          request,
-          eventId: stableUuid(
-            `${contract.id}:event:deliverable:${deliverable.id}:${eventType}:${transitionOccurredAt}`,
-          ),
-          ignoreDuplicate: true,
-        });
-        await updateContractDeliverableWorkflow(contract.id, request);
-      }
-      const currentBundle = await readContractDeliverableBundle(contract);
-      response.json({
-        deliverable: sanitizeDeliverableForClient(deliverable),
-        ...buildDeliverableResponse(contract, currentBundle),
+    if (
+      deliverable.review_status !== "submitted" &&
+      deliverable.review_status !== status
+    ) {
+      response.status(409).json({
+        code: "DELIVERABLE_REVIEW_CHANGED",
+        error: "이미 검수된 콘텐츠입니다. 최신 상태를 다시 확인해 주세요.",
       });
       return;
     }
 
-    const now = new Date().toISOString();
-    const patchResponse = await fetchSupabase(
-      "deliverables",
-      `?id=eq.${encodeURIComponent(deliverable.id)}`,
-      {
-        method: "PATCH",
-        headers: { Prefer: "return=representation" },
-        body: JSON.stringify({
-          review_status: status,
-          review_comment: reviewComment,
-          reviewed_by_profile_id: advertiserAuth.profile.id,
-          reviewed_at: now,
-          updated_at: now,
-        }),
-      },
-    );
-    await assertSupabaseOk(patchResponse, "Supabase deliverable review update");
-    const [updatedDeliverable] = (await patchResponse.json()) as SupabaseDeliverableRow[];
+    const transitionOccurredAt =
+      deliverable.review_status === status
+        ? normalizeOptionalText(deliverable.reviewed_at ?? deliverable.updated_at)
+        : new Date().toISOString();
+    if (!transitionOccurredAt || !normalizeOptionalText(deliverable.updated_at)) {
+      response.status(409).json({
+        code: "DELIVERABLE_REVIEW_CHANGED",
+        error: "콘텐츠 버전을 확인할 수 없습니다. 다시 불러와 주세요.",
+      });
+      return;
+    }
 
     const eventType = deliverableReviewEventType(status);
-    await insertContractEvent({
-      contractId: contract.id,
-      actorProfileId: advertiserAuth.profile.id,
-      actorRole: "advertiser",
-      actorDisplayName: advertiserAuth.profile.name,
-      eventType,
-      targetType: "deliverable",
-      targetId: deliverable.id,
-      payload: {
-        review_status: status,
-        review_comment: reviewComment,
-        transition_occurred_at: now,
-      },
+    const reviewEventId = stableUuid(
+      `${contract.id}:event:deliverable:${deliverable.id}:${eventType}:${transitionOccurredAt}`,
+    );
+    const readyEventId = stableUuid(
+      `${contract.id}:event:deliverables_ready_to_close`,
+    );
+    reviewCommitAttempted = true;
+    requestedReviewStatus = status;
+    const finalization = await finalizeDeliverableReviewAtomically({
+      contract,
+      deliverable,
+      status,
+      reviewComment,
+      reviewerProfileId:
+        deliverable.review_status === status &&
+        deliverable.reviewed_by_profile_id &&
+        isUuid(deliverable.reviewed_by_profile_id)
+          ? deliverable.reviewed_by_profile_id
+          : advertiserAuth.profile.id,
+      reviewerDisplayName:
+        deliverable.reviewed_by_profile_id === advertiserAuth.profile.id
+          ? advertiserAuth.profile.name
+          : deliverable.review_status === status
+            ? "광고주"
+            : advertiserAuth.profile.name,
+      reviewEventId,
+      readyEventId,
+      occurredAt: transitionOccurredAt,
       request,
-      eventId: stableUuid(
-        `${contract.id}:event:deliverable:${deliverable.id}:${eventType}:${now}`,
-      ),
-      ignoreDuplicate: true,
     });
-    await updateContractDeliverableWorkflow(contract.id, request);
+    if (
+      finalization.outcome !== "reviewed" &&
+      finalization.outcome !== "idempotent"
+    ) {
+      response.status(409).json({
+        code: "DELIVERABLE_REVIEW_CHANGED",
+        error: "콘텐츠 검수 상태가 변경되었습니다. 최신 상태를 다시 확인해 주세요.",
+      });
+      return;
+    }
 
     const updatedBundle = await readContractDeliverableBundle(contract);
+    const updatedDeliverable = updatedBundle.deliverables.find(
+      (candidate) => candidate.id === deliverable.id,
+    );
+    if (!updatedDeliverable) {
+      throw new Error("Committed deliverable review could not be reloaded");
+    }
     response.json({
       deliverable: sanitizeDeliverableForClient(updatedDeliverable),
       ...buildDeliverableResponse(contract, updatedBundle),
     });
   } catch (error) {
+    if (reviewCommitAttempted && requestedReviewStatus) {
+      try {
+        const reconciledRows = await readSupabaseRows<SupabaseDeliverableRow>(
+          "deliverables",
+          `?select=*&id=eq.${encodeURIComponent(
+            request.params.deliverableId,
+          )}&contract_id=eq.${encodeURIComponent(request.params.id)}&limit=1`,
+          "deliverable review reconciliation",
+        );
+        const reconciledDeliverable = reconciledRows[0];
+        if (reconciledDeliverable?.review_status === requestedReviewStatus) {
+          const reconciledContract = await readContractById(request.params.id);
+          if (reconciledContract) {
+            const reconciledBundle = await readContractDeliverableBundle(
+              reconciledContract,
+            );
+            response.json({
+              deliverable: sanitizeDeliverableForClient(
+                reconciledDeliverable,
+              ),
+              ...buildDeliverableResponse(
+                reconciledContract,
+                reconciledBundle,
+              ),
+              reconciled: true,
+            });
+            return;
+          }
+        }
+      } catch (reconciliationError) {
+        console.warn(
+          `[${productName}] deliverable review reconciliation failed: ${operationalErrorLabel(
+            reconciliationError,
+          )}`,
+        );
+      }
+    }
+    if (
+      error instanceof ContractVersionConflictError ||
+      (error instanceof Error &&
+        /DIRECTSIGN_CONTRACT_NOT_ACTIVE|could not serialize access/i.test(
+          error.message,
+        ))
+    ) {
+      response.status(409).json({
+        code: "CONTRACT_VERSION_CHANGED",
+        error: "계약 상태가 변경되었습니다. 최신 내용을 다시 확인해 주세요.",
+      });
+      return;
+    }
     next(error);
   }
 });
@@ -34984,6 +39578,7 @@ app.get("/api/influencer/dashboard/applications", async (request, response, next
 
 app.post("/api/contracts/:id/close", async (request, response, next) => {
   try {
+    if (!requireAuthoritativeContractMutationId(response, request.params.id)) return;
     const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "contract_close",
@@ -34997,10 +39592,9 @@ app.post("/api/contracts/:id/close", async (request, response, next) => {
     const advertiserAuth = await requireAdvertiserSession(request, response);
     if (!advertiserAuth) return;
 
-    const {
-      store,
-      existingContract: contract,
-    } = await readContractWriteContext(request.params.id);
+    const { existingContract: contract } = await readContractWriteContext(
+      request.params.id,
+    );
 
     if (!contract) {
       response.status(404).json({ error: "Contract not found" });
@@ -35083,23 +39677,33 @@ app.post("/api/contracts/:id/close", async (request, response, next) => {
       updated_at: now,
     });
 
-    await writeStore(upsertContractIntoStore(store, updatedContract));
+    const closeEventId = stableUuid(
+      `${contract.id}:event:contract_closed:${updatedContract.updated_at}`,
+    );
     if (useSupabaseV2 && isUuid(contract.id)) {
-      await patchSupabaseRecord(
-        "contracts",
-        `?id=eq.${encodeURIComponent(contract.id)}`,
-        {
-          status: "completed",
-          next_actor_role: null,
-          next_action: "광고 계약 마감 완료",
-          next_due_at: null,
-          completed_at: now,
-          updated_at: now,
-        },
-        "Supabase contract close update",
-      );
-    }
-    if (!useSupabaseV2) {
+      const closeResult = await closeContractAtomically({
+        expected: contract,
+        updated: updatedContract,
+        actorProfileId: advertiserAuth.profile.id,
+        actorDisplayName: advertiserAuth.profile.name,
+        eventId: closeEventId,
+      });
+      if (closeResult.outcome === "deliverables_not_ready") {
+        response.status(409).json({
+          error: "All required content must be approved before contract close",
+          summary: {
+            total: closeResult.total,
+            submitted: closeResult.submitted,
+            approved: closeResult.approved,
+          },
+        });
+        return;
+      }
+      if (closeResult.outcome !== "closed") {
+        throw new ContractVersionConflictError();
+      }
+    } else {
+      await writeExistingContractWithCas(contract, updatedContract);
       await insertContractEvent({
         contractId: contract.id,
         actorProfileId: advertiserAuth.profile.id,
@@ -35110,6 +39714,8 @@ app.post("/api/contracts/:id/close", async (request, response, next) => {
         targetId: contract.id,
         payload: { summary, settlement_confirmed: true },
         request,
+        eventId: closeEventId,
+        ignoreDuplicate: true,
       });
     }
     response.json({
@@ -35118,6 +39724,19 @@ app.post("/api/contracts/:id/close", async (request, response, next) => {
       message: "광고 계약 마감 완료",
     });
   } catch (error) {
+    if (
+      error instanceof ContractVersionConflictError ||
+      (error instanceof Error &&
+        /DIRECTSIGN_CONTRACT_NOT_ACTIVE|could not serialize access/i.test(
+          error.message,
+        ))
+    ) {
+      response.status(409).json({
+        code: "CONTRACT_VERSION_CHANGED",
+        error: "계약 상태가 변경되었습니다. 최신 내용을 다시 확인해 주세요.",
+      });
+      return;
+    }
     next(error);
   }
 });
@@ -35126,6 +39745,8 @@ app.get(
   "/api/contracts/:id/deliverables/:deliverableId/files/:fileId",
   async (request, response, next) => {
     try {
+      setPrivateAuthResponseHeaders(response);
+      response.setHeader("Pragma", "no-cache");
       const { existingContract: contract } = await readContractWriteContext(
         request.params.id,
       );
@@ -35143,10 +39764,19 @@ app.get(
         response.status(404).json({ error: "Contract not found" });
         return;
       }
-      if (access.role === "admin" && access.supportAccess.scope !== "contract_and_pdf") {
+      if (access.role === "admin") {
         response.status(403).json({
-          error: "This support access request does not include private file access",
+          error: "운영 지원 열람에는 제출 콘텐츠 파일이 포함되지 않습니다.",
         });
+        return;
+      }
+      const actor = contractAccessActor(access);
+      const downloadThrottle = await consumeSensitiveEndpointSubjectRateLimit(
+        "deliverable_file_download",
+        actor.actorProfileId ?? `${access.role}:${contract.id}`,
+      );
+      if (downloadThrottle.blocked) {
+        sendSensitiveRateLimitResponse(response, downloadThrottle);
         return;
       }
 
@@ -35190,7 +39820,6 @@ app.get(
         return;
       }
 
-      const actor = contractAccessActor(access);
       await insertContractEvent({
         contractId: contract.id,
         actorProfileId: actor.actorProfileId,
@@ -35206,25 +39835,13 @@ app.get(
         },
         request,
       });
-      if (access.role === "admin") {
-        await appendSupportAccessAuditEvent(access.supportAccess.id, {
-          action: "viewed_pdf",
-          actor_role: "admin",
-          actor_profile_id: access.auth.profile.id,
-          actor_name: access.auth.profile.name,
-          description: "운영자가 당사자 요청에 따라 제출된 콘텐츠 파일을 내려받았습니다.",
-          ip: getClientIp(request),
-          user_agent: request.header("user-agent") ?? "unknown",
-        });
-      }
-
-      response.setHeader("Content-Type", storedFile.content_type);
-      response.setHeader("Cache-Control", "no-store");
-      response.setHeader(
-        "Content-Disposition",
-        `attachment; filename="${sanitizeStorageSegment(storedFile.file_name)}"`,
-      );
-      response.send(fileBuffer);
+      setPrivateDownloadHeaders(response, {
+        contentType: storedFile.content_type,
+        contentDisposition: `attachment; filename="${sanitizeStorageSegment(
+          storedFile.file_name,
+        )}"`,
+      });
+      await streamPrivateDownloadBuffer(response, fileBuffer);
     } catch (error) {
       next(error);
     }
@@ -35233,6 +39850,7 @@ app.get(
 
 app.post("/api/contracts/:id/support-access-requests", async (request, response, next) => {
   try {
+    if (!requireAuthoritativeContractMutationId(response, request.params.id)) return;
     const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "support_access_request",
@@ -35285,83 +39903,75 @@ app.post("/api/contracts/:id/support-access-requests", async (request, response,
     const scope: SupportAccessScope =
       requestedScope === "contract_and_pdf" ? "contract_and_pdf" : "contract";
 
-    const now = new Date().toISOString();
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     const requesterRole =
       access.role === "advertiser" ? "advertiser" : "influencer";
     const requesterProfile = "auth" in access ? access.auth.profile : undefined;
+    if (!requesterProfile) {
+      response.status(403).json({ error: "A trusted contract-party profile is required" });
+      return;
+    }
     const requesterName =
-      requesterProfile?.name ??
+      requesterProfile.name ??
       (requesterRole === "advertiser"
         ? contract.advertiser_info?.manager ?? contract.advertiser_info?.name
         : contract.influencer_info.name);
     const requesterEmail =
-      requesterProfile?.email ??
+      requesterProfile.email ??
       (requesterRole === "influencer"
         ? contract.influencer_info.contact
         : contract.advertiser_info?.manager);
+    const dataOrigin =
+      normalizeDataOrigin(contract.data_origin) ??
+      deriveDataOrigin([requesterEmail, requesterName, contract.title]);
+    const result = await createSupportAccessGrantAtomically({
+      requestId: randomUUID(),
+      eventId: randomUUID(),
+      contractId: contract.id,
+      requesterProfileId: requesterProfile.id,
+      requesterRole,
+      requesterName,
+      requesterEmail,
+      reason,
+      scope,
+      dataOrigin,
+      ip: getClientIp(request),
+      userAgent: request.header("user-agent") ?? "unknown",
+    });
 
-    const activeDuplicate = (await readSupportAccessRequests()).find(
-      (requestRecord) =>
-        requestRecord.contract_id === contract.id &&
-        requestRecord.requester_role === requesterRole &&
-        (requesterProfile?.id
-          ? requestRecord.requester_profile_id === requesterProfile.id
-          : normalizeEmail(requestRecord.requester_email ?? "") ===
-            normalizeEmail(requesterEmail ?? "")) &&
-        isSupportAccessActive(requestRecord),
-    );
-
-    if (activeDuplicate) {
+    if (result.outcome === "active_duplicate") {
       response.status(409).json({
         error: "An active support access request already exists for this contract",
-        request: activeDuplicate,
+        request: result.request,
       });
       return;
     }
-
-    await ensureSupportAccessEventStoreAvailable();
-
-    const record = await insertSupportAccessRequest({
-      id: randomUUID(),
-      contract_id: contract.id,
-      legacy_contract_id: contract.id,
-      requester_profile_id: requesterProfile?.id,
-      requester_role: requesterRole,
-      requester_name: requesterName,
-      requester_email: requesterEmail,
-      reason,
-      scope,
-      status: "active",
-      data_origin:
-        normalizeDataOrigin(contract.data_origin) ??
-        deriveDataOrigin([requesterEmail, requesterName, contract.title]),
-      expires_at: expiresAt,
-      audit_events: [
-        {
-          id: randomUUID(),
-          action: "created",
-          actor_role: requesterRole,
-          actor_name: requesterName,
-          description: `계약 당사자가 "${supportAccessConsentText}"에 동의하고 24시간 지원 열람을 허용했습니다.`,
-          ip: getClientIp(request),
-          user_agent: request.header("user-agent") ?? "unknown",
-          created_at: now,
-        },
-      ],
-      created_at: now,
-      updated_at: now,
-    });
-    const createdAuditEvent = record.audit_events[0];
-    if (createdAuditEvent) {
-      await appendSupportAccessEventRow(record, createdAuditEvent);
+    if (result.outcome === "not_found") {
+      response.status(404).json({ error: "Contract not found" });
+      return;
+    }
+    if (result.outcome === "request_conflict") {
+      response.status(409).json({
+        error: "Support access request conflicted with an existing request",
+        code: result.outcome,
+      });
+      return;
+    }
+    if (!result.request) {
+      throw new Error("Atomic support access grant returned no request");
     }
 
-    await enqueueSupportAccessOperationalAlert(record);
+    void enqueueSupportAccessOperationalAlert(result.request).catch((alertError) => {
+      console.warn(
+        `[${productName}] support access operational alert enqueue failed: ${operationalErrorLabel(
+          alertError,
+        )}`,
+      );
+    });
 
-    response.status(201).json({
-      request: record,
+    response.status(result.outcome === "reconciled" ? 202 : 201).json({
+      request: result.request,
       message: "Support access is active for 24 hours",
+      persistence_reconciled: result.outcome === "reconciled",
     });
   } catch (error) {
     next(error);
@@ -35398,16 +40008,23 @@ app.get("/api/contracts/:id", async (request, response, next) => {
     }
 
     response.setHeader("Cache-Control", "no-store");
-    const responseContract =
-      access.role === "advertiser" || access.role === "influencer"
-        ? normalizeTestContractDatesForSession(access.auth, contract)
-        : contract;
+    // Contract detail, review PDF, and signature must share one authoritative
+    // document snapshot. Relative QA-date presentation belongs in dashboards,
+    // never in the document/signature path.
+    const responseContract = contract;
     const advertiserContractAccess =
       access.role === "advertiser"
         ? await resolveAdvertiserContractAccess(access.auth, contract)
         : undefined;
     response.json({
       contract: redactContractForClient(responseContract, access.role),
+      document_hash: createContractDocumentHash(
+        responseContract,
+        signatureConsentVersion,
+      ),
+      ...(access.role === "influencer"
+        ? { signer_display_name: access.auth.profile.name }
+        : {}),
       access_role: access.role,
       ...(advertiserContractAccess
         ? { advertiser_contract_access: advertiserContractAccess }
@@ -35418,9 +40035,48 @@ app.get("/api/contracts/:id", async (request, response, next) => {
   }
 });
 
+app.post("/api/contracts/:id/share-session", async (request, response, next) => {
+  setPrivateAuthResponseHeaders(response);
+  try {
+    if (!requireAuthoritativeContractMutationId(response, request.params.id)) return;
+    const throttle = await consumeSensitiveEndpointRateLimit(
+      request,
+      "contract_share_session",
+      request.params.id,
+    );
+    if (throttle.blocked) {
+      sendSensitiveRateLimitResponse(response, throttle);
+      return;
+    }
+
+    const contract = await readContractById(request.params.id);
+    const providedToken = request.header("X-Yeollock-Share-Token");
+    const activeShare = contract ? getActiveContractShareToken(contract) : undefined;
+    if (
+      !contract ||
+      !providedToken ||
+      !activeShare ||
+      !safeEqual(providedToken, activeShare.token)
+    ) {
+      response.status(401).json({ error: "유효한 계약 링크가 필요합니다." });
+      return;
+    }
+
+    if (!setContractShareAccessCookie(response, contract)) {
+      response.status(503).json({ error: "계약 링크를 확인할 수 없습니다." });
+      return;
+    }
+
+    response.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post("/api/contracts/:id/share-link/reveal", async (request, response, next) => {
   setPrivateAuthResponseHeaders(response);
   try {
+    if (!requireAuthoritativeContractMutationId(response, request.params.id)) return;
     const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "contract_share_link_reveal",
@@ -35485,7 +40141,7 @@ app.post("/api/contracts/:id/share-link/reveal", async (request, response, next)
       `/contract/${encodeURIComponent(contract.id)}`,
       `${getAppBaseUrl(request)}/`,
     );
-    shareUrl.searchParams.set("token", token!);
+    shareUrl.hash = new URLSearchParams({ token: token! }).toString();
     response.json({ share_url: shareUrl.toString() });
   } catch (error) {
     next(error);
@@ -35494,6 +40150,8 @@ app.post("/api/contracts/:id/share-link/reveal", async (request, response, next)
 
 app.get("/api/contracts/:id/review-pdf", async (request, response, next) => {
   try {
+    setPrivateAuthResponseHeaders(response);
+    response.setHeader("Pragma", "no-cache");
     const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "contract_review_pdf",
@@ -35539,13 +40197,26 @@ app.get("/api/contracts/:id/review-pdf", async (request, response, next) => {
     }
 
     const pdfBuffer = await buildContractReviewPdf(contract);
-    response.setHeader("Content-Type", "application/pdf");
-    response.setHeader("Cache-Control", "no-store");
-    response.setHeader(
-      "Content-Disposition",
-      `inline; filename="${contract.id}-review-contract.pdf"`,
-    );
-    response.send(pdfBuffer);
+    const actor = contractAccessActor(access, "share");
+    await insertContractEvent({
+      contractId: contract.id,
+      actorProfileId: actor.actorProfileId,
+      actorRole: actor.actorRole,
+      actorDisplayName: actor.actorDisplayName,
+      eventType: "review_pdf_downloaded",
+      targetType: "review_pdf",
+      targetId: contract.id,
+      payload: {
+        access_role: access.role,
+        file_name: `${contract.id}-review-contract.pdf`,
+      },
+      request,
+    });
+    setPrivateDownloadHeaders(response, {
+      contentType: "application/pdf",
+      contentDisposition: `inline; filename="${contract.id}-review-contract.pdf"`,
+    });
+    await streamPrivateDownloadBuffer(response, pdfBuffer);
   } catch (error) {
     next(error);
   }
@@ -35553,6 +40224,8 @@ app.get("/api/contracts/:id/review-pdf", async (request, response, next) => {
 
 app.get("/api/contracts/:id/final-pdf", async (request, response, next) => {
   try {
+    setPrivateAuthResponseHeaders(response);
+    response.setHeader("Pragma", "no-cache");
     const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "final_pdf",
@@ -35644,20 +40317,24 @@ app.get("/api/contracts/:id/final-pdf", async (request, response, next) => {
       request,
     });
 
-    response.setHeader("Content-Type", "application/pdf");
-    response.setHeader("Cache-Control", "no-store");
-    response.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${contract.id}-signed-record.pdf"`,
-    );
-    response.send(fileBuffer);
+    setPrivateDownloadHeaders(response, {
+      contentType: "application/pdf",
+      contentDisposition: `attachment; filename="${contract.id}-signed-record.pdf"`,
+    });
+    await streamPrivateDownloadBuffer(response, fileBuffer);
   } catch (error) {
     next(error);
   }
 });
 
 app.post("/api/contracts/:id/signatures/influencer", async (request, response, next) => {
+  let pendingSignatureFile: StoredPrivateFile | undefined;
+  let pendingSignedPdfFile: StoredPrivateFile | undefined;
+  let pendingSignedContract: Contract | undefined;
+  let signaturePersistenceAttempted = false;
+  let signaturePersistenceCommitted = false;
   try {
+    if (!requireAuthoritativeContractMutationId(response, request.params.id)) return;
     const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "influencer_signature",
@@ -35669,14 +40346,21 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
     }
 
     const signatureData = String(request.body?.signature_data ?? "");
-    const signerName = normalizeRequiredText(request.body?.signer_name);
+    const requestedSignerName = normalizeRequiredText(request.body?.signer_name);
     const consentAccepted = request.body?.consent_accepted === true;
+    const expectedDocumentHash = normalizeRequiredText(
+      request.body?.expected_document_hash,
+    ).toLowerCase();
 
-    if (!hasText(signatureData) || !signatureData.startsWith("data:image/")) {
+    if (
+      !hasText(signatureData) ||
+      !signatureData.startsWith("data:image/png;base64,") ||
+      signatureData.length > Math.ceil((maxSignatureImageSize * 4) / 3) + 128
+    ) {
       response.status(400).json({ error: "Valid signature image data is required" });
       return;
     }
-    if (!signerName) {
+    if (!requestedSignerName) {
       response.status(422).json({ error: "Signer name is required" });
       return;
     }
@@ -35684,20 +40368,51 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
       response.status(422).json({ error: "Signature consent is required" });
       return;
     }
+    if (!/^[0-9a-f]{64}$/.test(expectedDocumentHash)) {
+      response.status(422).json({
+        code: "CONTRACT_VERSION_REQUIRED",
+        error: "서명할 계약서를 다시 확인해 주세요.",
+      });
+      return;
+    }
 
     const {
       store,
       existingIndex,
       existingContract: existing,
+      isV2Only,
     } = await readContractWriteContext(request.params.id);
 
     if (!existing) {
       response.status(404).json({ error: "Contract not found" });
       return;
     }
+    if (isV2Only || existingIndex < 0) {
+      response.status(409).json({
+        code: "CONTRACT_AUTHORITATIVE_RECORD_REQUIRED",
+        error: "계약 원본 동기화가 필요합니다. 잠시 후 다시 시도해 주세요.",
+      });
+      return;
+    }
     const influencerAuth = await requireInfluencerSession(request, response);
 
     if (!influencerAuth) return;
+
+    const signerName = normalizeRequiredText(influencerAuth.profile.name);
+    const signerEmail = normalizeEmail(influencerAuth.profile.email);
+    if (!signerName || !isValidEmail(signerEmail)) {
+      response.status(409).json({
+        error: "서명 계정의 이름과 이메일을 먼저 확인해 주세요.",
+      });
+      return;
+    }
+    if (requestedSignerName !== signerName) {
+      response.status(409).json({
+        code: "SIGNER_IDENTITY_CHANGED",
+        error: "서명 계정 이름이 변경되었습니다. 계약서를 다시 확인해 주세요.",
+      });
+      return;
+    }
 
     if (!canInfluencerAccessLegacyContract(influencerAuth, existing)) {
       response.status(403).json({ error: "이 계약을 볼 권한이 없습니다." });
@@ -35739,6 +40454,18 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
       return;
     }
 
+    const currentDocumentHash = createContractDocumentHash(
+      existing,
+      signatureConsentVersion,
+    );
+    if (!safeEqual(expectedDocumentHash, currentDocumentHash)) {
+      response.status(409).json({
+        code: "CONTRACT_VERSION_CHANGED",
+        error: "계약 내용이 변경되어 다시 확인이 필요합니다.",
+      });
+      return;
+    }
+
     const signedAt = new Date().toISOString();
     const clientIp = getClientIp(request);
     const userAgent = request.header("user-agent") ?? "unknown";
@@ -35753,7 +40480,8 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
         signatureImageMimeTypes,
       ) ||
       signatureBuffer.byteLength <= 0 ||
-      signatureBuffer.byteLength > maxSignatureImageSize
+      signatureBuffer.byteLength > maxSignatureImageSize ||
+      !isSafeSignaturePng(signatureBuffer)
     ) {
       response.status(400).json({ error: "Signature image data is invalid" });
       return;
@@ -35765,20 +40493,14 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
         response,
         role: "influencer",
         action: "influencer_signature",
-        resource: existing.id,
+        resource: `${existing.id}:${currentDocumentHash}`,
         session: influencerAuth,
       }))
     ) {
       return;
     }
 
-    const contractHash = sha256Hex(
-      JSON.stringify({
-        ...existing,
-        signature_data: undefined,
-        updated_at: undefined,
-      }),
-    );
+    const contractHash = currentDocumentHash;
     const signatureHash = createHash("sha256").update(signatureBuffer).digest("hex");
     const signatureFile = await storePrivateBuffer({
       area: "signature-images",
@@ -35788,6 +40510,7 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
       contentType: signatureContentType,
       buffer: signatureBuffer,
     });
+    pendingSignatureFile = signatureFile;
     const signedPdfBuffer = await buildSignedContractPdf({
       contract: existing,
       signedAt,
@@ -35796,7 +40519,7 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
       signatureDataUrl: signatureData,
       signatureContentType,
       signerName,
-      signerEmail: existing.influencer_info.contact,
+      signerEmail,
       clientIp,
       consentText: signatureConsentText,
     });
@@ -35808,6 +40531,7 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
       contentType: "application/pdf",
       buffer: signedPdfBuffer,
     });
+    pendingSignedPdfFile = signedPdfFile;
     const updatedContract = normalizeContract({
       ...existing,
       status: "SIGNED",
@@ -35841,7 +40565,7 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
         ip: clientIp,
         user_agent: userAgent,
         signer_name: signerName,
-        signer_email: existing.influencer_info.contact,
+        signer_email: signerEmail,
         consent_text: signatureConsentText,
         consent_text_version: signatureConsentVersion,
         contract_hash: contractHash,
@@ -35862,19 +40586,108 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
     });
 
     const nextStore = mergeContractIntoStore(store, existingIndex, updatedContract);
+    pendingSignedContract = updatedContract;
+    signaturePersistenceAttempted = true;
 
-    await writeStore(nextStore);
+    let projectionSyncPending = false;
+    try {
+      if (existingIndex >= 0) {
+        const persistence = await writeExistingContractWithCas(
+          existing,
+          updatedContract,
+        );
+        projectionSyncPending = persistence.projectionSyncPending;
+      } else {
+        await writeStore(nextStore);
+      }
+    } catch (error) {
+      if (error instanceof ContractVersionConflictError) {
+        await Promise.allSettled([
+          deleteStoredPrivateFile(signatureFile),
+          deleteStoredPrivateFile(signedPdfFile),
+        ]);
+        response.status(409).json({
+          code: "CONTRACT_VERSION_CHANGED",
+          error: "계약 내용이 변경되어 다시 확인이 필요합니다.",
+        });
+        return;
+      }
+      throw error;
+    }
+    signaturePersistenceCommitted = true;
     setSignedPdfAccessCookie(response, updatedContract);
-    response.json({
+    response.status(projectionSyncPending ? 202 : 200).json({
       contract: redactContractForClient(updatedContract, "influencer"),
+      ...(projectionSyncPending ? { projection_sync_pending: true } : {}),
     });
   } catch (error) {
+    let persistedSignedContract: Contract | undefined;
+    let persistenceStateChecked = false;
+    if (
+      !signaturePersistenceCommitted &&
+      signaturePersistenceAttempted &&
+      pendingSignedContract
+    ) {
+      try {
+        persistedSignedContract = useSupabase
+          ? await readSupabaseLegacyContract(pendingSignedContract.id)
+          : (await readStore()).contracts.find(
+              (contract) => contract.id === pendingSignedContract?.id,
+            );
+        persistenceStateChecked = true;
+        signaturePersistenceCommitted = Boolean(
+          persistedSignedContract?.status === "SIGNED" &&
+            persistedSignedContract.signature_data?.signature_storage_path ===
+              pendingSignatureFile?.path &&
+            persistedSignedContract.signature_data?.signed_pdf_path ===
+              pendingSignedPdfFile?.path,
+        );
+      } catch (reconciliationError) {
+        console.warn(
+          `[${productName}] signature persistence reconciliation failed: ${operationalErrorLabel(
+            reconciliationError,
+          )}`,
+        );
+      }
+    }
+
+    if (signaturePersistenceCommitted && persistedSignedContract) {
+      console.warn(
+        `[${productName}] legacy signature committed while its projection needs repair: ${operationalErrorLabel(
+          error,
+        )}`,
+      );
+      setSignedPdfAccessCookie(response, persistedSignedContract);
+      response.status(202).json({
+        contract: redactContractForClient(
+          persistedSignedContract,
+          "influencer",
+        ),
+        projection_sync_pending: true,
+      });
+      return;
+    }
+
+    const safeToDeletePendingFiles =
+      !signaturePersistenceAttempted || persistenceStateChecked;
+    if (!signaturePersistenceCommitted && safeToDeletePendingFiles) {
+      await Promise.allSettled(
+        [pendingSignatureFile, pendingSignedPdfFile]
+          .filter((file): file is StoredPrivateFile => Boolean(file))
+          .map((file) => deleteStoredPrivateFile(file)),
+      );
+    } else if (!signaturePersistenceCommitted) {
+      console.warn(
+        `[${productName}] retained unconfirmed signature files for reconciliation after an ambiguous write failure`,
+      );
+    }
     next(error);
   }
 });
 
 app.put("/api/contracts/:id", async (request, response, next) => {
   try {
+    if (!requireAuthoritativeContractMutationId(response, request.params.id)) return;
     const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "contract_write",
@@ -36021,6 +40834,14 @@ app.put("/api/contracts/:id", async (request, response, next) => {
         };
         linkedOneToOneProposal = proposal;
       }
+
+      if (isV2Only) {
+        response.status(409).json({
+          code: "CONTRACT_AUTHORITATIVE_RECORD_REQUIRED",
+          error: "계약 원본 동기화가 필요합니다. 잠시 후 다시 시도해 주세요.",
+        });
+        return;
+      }
     }
 
     const validationError = validateContractPayload(normalizedContract);
@@ -36071,12 +40892,7 @@ app.put("/api/contracts/:id", async (request, response, next) => {
       return;
     }
 
-    const observedIncompleteOneToOneContract = Boolean(
-      isV2Only && linkedOneToOneProposal,
-    );
-    const existingContractForMutation = observedIncompleteOneToOneContract
-      ? undefined
-      : existingContract;
+    const existingContractForMutation = existingContract;
 
     const advertiserAccessError =
       actor === "advertiser"
@@ -36109,6 +40925,13 @@ app.put("/api/contracts/:id", async (request, response, next) => {
         });
         return;
       }
+      if (isV2Only) {
+        response.status(409).json({
+          code: "CONTRACT_AUTHORITATIVE_RECORD_REQUIRED",
+          error: "계약 원본 동기화가 필요합니다. 잠시 후 다시 시도해 주세요.",
+        });
+        return;
+      }
     }
 
     const accessError =
@@ -36120,6 +40943,12 @@ app.put("/api/contracts/:id", async (request, response, next) => {
       response.status(403).json({ error: accessError });
       return;
     }
+
+    normalizedContract = serverAuthorContractClauseHistory(
+      actor as Exclude<AuditActor, "system">,
+      existingContractForMutation,
+      normalizedContract,
+    );
 
     const contractSendAttempt =
       actor === "advertiser" &&
@@ -36167,8 +40996,14 @@ app.put("/api/contracts/:id", async (request, response, next) => {
           !existingContractForMutation && linkedOneToOneProposal
             ? `one_to_one_proposal_${linkedOneToOneProposal.id}_contract_created`
             : undefined,
+        finalizeDirectSend:
+          contractSendAttempt && !isFixedCampaignContract(normalizedContract),
       },
     );
+    updatedContract = {
+      ...updatedContract,
+      updated_at: new Date().toISOString(),
+    };
 
     if (actor === "advertiser") {
       updatedContract = {
@@ -36181,18 +41016,8 @@ app.put("/api/contracts/:id", async (request, response, next) => {
       };
     }
 
-    const nextStore = observedIncompleteOneToOneContract
-      ? {
-          contracts: mergeOneToOneContractWriteSet(
-            store.contracts,
-            existingIndex,
-            updatedContract,
-            true,
-          ),
-        }
-      : mergeContractIntoStore(store, existingIndex, updatedContract);
-    await writeStore(
-      nextStore,
+    const nextStore = mergeContractIntoStore(store, existingIndex, updatedContract);
+    const writeOptions =
       linkedOneToOneProposal && advertiserAuth
         ? {
             oneToOneIdentityRecovery: {
@@ -36201,8 +41026,30 @@ app.put("/api/contracts/:id", async (request, response, next) => {
               advertiserProfileId: advertiserAuth.profile.id,
             },
           }
-        : undefined,
-    );
+        : undefined;
+    try {
+      if (
+        existingContractForMutation &&
+        existingIndex >= 0
+      ) {
+        await writeExistingContractWithCas(
+          existingContractForMutation,
+          updatedContract,
+          writeOptions,
+        );
+      } else {
+        await writeStore(nextStore, writeOptions);
+      }
+    } catch (error) {
+      if (error instanceof ContractVersionConflictError) {
+        response.status(409).json({
+          code: "CONTRACT_VERSION_CHANGED",
+          error: "계약 내용이 변경되어 다시 확인이 필요합니다.",
+        });
+        return;
+      }
+      throw error;
+    }
     if (linkedOneToOneProposal) {
       const transition = await transitionMarketplaceProposalToContract(
         linkedOneToOneProposal,

@@ -19,6 +19,20 @@ import { InfluencerAccountSettingsMenu } from "../../components/InfluencerAccoun
 import { MobileSurfaceSwitch } from "../../components/MobileSurfaceSwitch";
 import { PlatformBrandMark } from "../../components/PlatformBrandMark";
 import { apiFetch } from "../../domain/api";
+import {
+  getPrivateFileSelectionKey,
+  getOrCreatePrivateFileUploadIdentity,
+  isPrivateFileUploadTicketUsable,
+  preparePrivateFileDescriptor,
+  requestPrivateFileUploadTicket,
+  shouldDiscardPrivateFileUploadTicket,
+  shouldRetryPrivateFileUpload,
+  uploadPrivateFileWithTicket,
+  PrivateFileTransferError,
+  type PendingPrivateFileTransfer,
+  type PrivateFileUploadIdentity,
+  type PrivateFileUploadProgress,
+} from "../../domain/privateFileUpload";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { formatPublicHandleValue } from "../../domain/display";
 import { buildLoginRedirect } from "../../domain/navigation";
@@ -116,6 +130,13 @@ type InstagramDmChallengeResponse = {
     expires_at: string;
     official_handle: string;
   };
+};
+
+type VerificationSubmissionProgress =
+  | PrivateFileUploadProgress
+  | { phase: "idle" | "finalizing" };
+type VerificationUploadAttempt = PrivateFileUploadIdentity & {
+  transfer?: PendingPrivateFileTransfer;
 };
 
 const fetchInstagramDmChallenge = async (requestId?: string) => {
@@ -288,11 +309,8 @@ export function InfluencerVerification() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const contractId = searchParams.get("contractId");
-  const token = searchParams.get("token");
   const returnPath = contractId
-    ? `/contract/${encodeURIComponent(contractId)}${
-        token ? `?token=${encodeURIComponent(token)}` : ""
-      }`
+    ? `/contract/${encodeURIComponent(contractId)}`
     : "/influencer/dashboard";
   const contract = useAppStore((state) =>
     contractId ? state.getContract(contractId) : undefined,
@@ -318,6 +336,9 @@ export function InfluencerVerification() {
   const [form, setForm] = useState(initialForm);
   const [file, setFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionProgress, setSubmissionProgress] =
+    useState<VerificationSubmissionProgress>({ phase: "idle" });
+  const [submissionNeedsRetry, setSubmissionNeedsRetry] = useState(false);
   const [error, setError] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [instagramDmChallenge, setInstagramDmChallenge] =
@@ -328,6 +349,9 @@ export function InfluencerVerification() {
   const [isInstagramDmRestoring, setIsInstagramDmRestoring] = useState(true);
   const [showAdditionalRequest, setShowAdditionalRequest] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const pendingEvidenceUploadRef = useRef<VerificationUploadAttempt>();
+  const accountPrefillIdentityRef = useRef("");
+  const accountPrefillConsumedRef = useRef(false);
   const selectedPlatform = PLATFORM_META[platform];
   const selectedMethod = METHOD_META[method];
   const isInstagramDmMethod =
@@ -517,10 +541,35 @@ export function InfluencerVerification() {
   useEffect(() => {
     const accountUrl = verification?.account?.platform_url?.trim();
     const accountHandle = verification?.account?.platform_handle?.trim();
-    if (!accountUrl || form.platform_url || form.platform_handle) return;
+    const accountIdentity = accountUrl
+      ? `${accountUrl}\n${accountHandle ?? ""}`
+      : "";
+    if (accountPrefillIdentityRef.current !== accountIdentity) {
+      accountPrefillIdentityRef.current = accountIdentity;
+      accountPrefillConsumedRef.current = false;
+    }
+    if (
+      contract ||
+      showAdditionalRequest ||
+      accountPrefillConsumedRef.current ||
+      !accountUrl ||
+      form.platform_url ||
+      form.platform_handle
+    ) {
+      if (
+        contract ||
+        showAdditionalRequest ||
+        form.platform_url ||
+        form.platform_handle
+      ) {
+        accountPrefillConsumedRef.current = true;
+      }
+      return;
+    }
 
     const inferredPlatform = inferPlatform(accountUrl);
     if (!inferredPlatform) return;
+    accountPrefillConsumedRef.current = true;
     const timer = window.setTimeout(() => {
       setPlatform(inferredPlatform);
       setMethod(PLATFORM_META[inferredPlatform].methods[0]);
@@ -535,19 +584,25 @@ export function InfluencerVerification() {
 
     return () => window.clearTimeout(timer);
   }, [
+    contract,
     form.platform_handle,
     form.platform_url,
+    showAdditionalRequest,
     verification?.account?.platform_handle,
     verification?.account?.platform_url,
   ]);
 
   const updateForm = (updates: Partial<InfluencerVerificationForm>) => {
+    accountPrefillConsumedRef.current = true;
     setForm((current) => ({ ...current, ...updates }));
+    pendingEvidenceUploadRef.current = undefined;
+    setSubmissionNeedsRetry(false);
     setError("");
     setSubmitted(false);
   };
 
   const updatePlatform = (nextPlatform: InfluencerPlatform) => {
+    accountPrefillConsumedRef.current = true;
     setPlatform(nextPlatform);
     setMethod(PLATFORM_META[nextPlatform].methods[0]);
     setInstagramDmUnavailable(false);
@@ -558,12 +613,30 @@ export function InfluencerVerification() {
       ownership_challenge_url: "",
     }));
     setFile(null);
+    pendingEvidenceUploadRef.current = undefined;
+    setSubmissionNeedsRetry(false);
+    setError("");
+    setSubmitted(false);
+  };
+
+  const openAdditionalRequestForm = () => {
+    accountPrefillConsumedRef.current = true;
+    setShowAdditionalRequest(true);
+    setPlatform("instagram");
+    setMethod("instagram_dm_code");
+    setForm(initialForm);
+    setFile(null);
+    pendingEvidenceUploadRef.current = undefined;
+    setSubmissionNeedsRetry(false);
+    setInstagramDmUnavailable(false);
     setError("");
     setSubmitted(false);
   };
 
   const updateMethod = (nextMethod: InfluencerVerificationMethod) => {
     setMethod(nextMethod);
+    pendingEvidenceUploadRef.current = undefined;
+    setSubmissionNeedsRetry(false);
     setInstagramDmUnavailable(false);
     setError("");
     setSubmitted(false);
@@ -622,9 +695,9 @@ export function InfluencerVerification() {
     }
 
     setIsSubmitting(true);
+    setSubmissionNeedsRetry(false);
 
     try {
-      const fileDataUrl = file ? await readFileAsDataUrl(file) : undefined;
       const submittedForm = isInstagramDmMethod
         ? {
             ...form,
@@ -635,6 +708,88 @@ export function InfluencerVerification() {
         : form;
       const submittedProofUrl =
         submittedForm.ownership_challenge_url || submittedForm.platform_url;
+      let uploadTicketId: string | undefined;
+      if (!isInstagramDmMethod && file) {
+        const contentType = inferVerificationFileType(file);
+        const selectionKey = getPrivateFileSelectionKey(
+          file,
+          contentType,
+          JSON.stringify([
+            contractId,
+            platform,
+            method,
+            submittedForm.platform_handle,
+            submittedForm.platform_url,
+            submittedProofUrl,
+            challengeCode,
+          ]),
+        );
+        let uploadAttempt = pendingEvidenceUploadRef.current;
+        const uploadIdentity = getOrCreatePrivateFileUploadIdentity(
+          uploadAttempt,
+          selectionKey,
+        );
+        if (uploadIdentity !== uploadAttempt) {
+          uploadAttempt = uploadIdentity;
+          pendingEvidenceUploadRef.current = uploadAttempt;
+        }
+        let transfer = uploadAttempt.transfer;
+        const canReuseTransfer =
+          transfer?.selectionKey === selectionKey &&
+          isPrivateFileUploadTicketUsable(transfer.ticket, "finalize") &&
+          (transfer.uploadState !== "pending" ||
+            isPrivateFileUploadTicketUsable(transfer.ticket, "initiation"));
+
+        if (!transfer || !canReuseTransfer) {
+          const descriptor = await preparePrivateFileDescriptor(
+            file,
+            contentType,
+            setSubmissionProgress,
+          );
+          setSubmissionProgress({ phase: "ticketing" });
+          const ticket = await requestPrivateFileUploadTicket({
+            endpoint: "/api/verification/influencer/upload-ticket",
+            descriptor,
+            expectedArea: "verification-influencer",
+            context: { upload_id: uploadAttempt.uploadId },
+          });
+          transfer = {
+            selectionKey,
+            descriptor,
+            ticket,
+            uploadState: "pending",
+          };
+          uploadAttempt.transfer = transfer;
+        }
+
+        if (transfer.uploadState === "pending") {
+          try {
+            await uploadPrivateFileWithTicket({
+              file,
+              descriptor: transfer.descriptor,
+              ticket: transfer.ticket,
+              tusUploadUrl: transfer.tusUploadUrl,
+              onTusUploadUrl: (url) => {
+                transfer.tusUploadUrl = url;
+              },
+              onProgress: setSubmissionProgress,
+            });
+            transfer.uploadState = "uploaded";
+          } catch (uploadError) {
+            if (
+              uploadError instanceof PrivateFileTransferError &&
+              uploadError.code === "UPLOAD_TICKET_EXPIRED"
+            ) {
+              pendingEvidenceUploadRef.current = undefined;
+              throw uploadError;
+            }
+            transfer.uploadState = "uncertain";
+          }
+        }
+        uploadTicketId = transfer.ticket.ticket_id;
+      }
+
+      setSubmissionProgress({ phase: "finalizing" });
       const response = await apiFetch("/api/verification/influencer", {
         method: "POST",
         credentials: "include",
@@ -653,14 +808,7 @@ export function InfluencerVerification() {
             ? undefined
             : challengeCode,
           ownership_challenge_url: submittedProofUrl,
-          evidence_file: !isInstagramDmMethod && file
-            ? {
-                name: file.name,
-                type: inferVerificationFileType(file),
-                size: file.size,
-                data_url: fileDataUrl,
-              }
-            : undefined,
+          upload_ticket_id: uploadTicketId,
           note:
             !isInstagramDmMethod
               ? form.note ||
@@ -719,6 +867,15 @@ export function InfluencerVerification() {
       }
 
       if (!response.ok) {
+        const uploadAttempt = pendingEvidenceUploadRef.current;
+        if (uploadAttempt?.transfer) {
+          if (shouldRetryPrivateFileUpload(data.code)) {
+            uploadAttempt.transfer.uploadState = "pending";
+          }
+          if (shouldDiscardPrivateFileUploadTicket(response.status, data.code)) {
+            pendingEvidenceUploadRef.current = undefined;
+          }
+        }
         throw new Error(
           translateApiErrorMessage(
             data.error,
@@ -747,8 +904,19 @@ export function InfluencerVerification() {
       setSubmitted(true);
       setForm(initialForm);
       setFile(null);
+      pendingEvidenceUploadRef.current = undefined;
       await refreshVerificationSummary();
     } catch (submitError) {
+      if (
+        submitError instanceof PrivateFileTransferError &&
+        shouldDiscardPrivateFileUploadTicket(
+          submitError.status ?? 0,
+          submitError.code,
+        )
+      ) {
+        pendingEvidenceUploadRef.current = undefined;
+      }
+      setSubmissionNeedsRetry(true);
       setError(
         submitError instanceof Error
           ? translateApiErrorMessage(
@@ -758,6 +926,7 @@ export function InfluencerVerification() {
           : "계정 인증 요청을 접수하지 못했습니다.",
       );
     } finally {
+      setSubmissionProgress({ phase: "idle" });
       setIsSubmitting(false);
     }
   };
@@ -924,7 +1093,7 @@ export function InfluencerVerification() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setShowAdditionalRequest(true)}
+                  onClick={openAdditionalRequestForm}
                   className="yl-primary-action inline-flex h-10 shrink-0 items-center justify-center rounded-[8px] px-4 text-[13px] font-bold transition"
                 >
                   다른 플랫폼 인증 추가
@@ -1215,7 +1384,11 @@ export function InfluencerVerification() {
                   />
                   <IconButton
                     label="인증 코드 새로 만들기"
-                    onClick={() => setChallengeCode(createChallengeCode())}
+                    onClick={() => {
+                      setChallengeCode(createChallengeCode());
+                      pendingEvidenceUploadRef.current = undefined;
+                      setSubmissionNeedsRetry(false);
+                    }}
                     icon={<RefreshCw className="h-4 w-4" />}
                   />
                 </div>
@@ -1297,11 +1470,15 @@ export function InfluencerVerification() {
                     const fileError = validateVerificationFile(nextFile);
                     if (fileError) {
                       setFile(null);
+                      pendingEvidenceUploadRef.current = undefined;
+                      setSubmissionNeedsRetry(false);
                       setError(fileError);
                       event.currentTarget.value = "";
                       return;
                     }
                     setFile(nextFile);
+                    pendingEvidenceUploadRef.current = undefined;
+                    setSubmissionNeedsRetry(false);
                     setError("");
                   }}
                 />
@@ -1352,21 +1529,35 @@ export function InfluencerVerification() {
               }
               className="yl-primary-action h-11 w-full rounded-[8px] px-5 text-sm font-bold transition disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500 disabled:shadow-none"
             >
-              {isSubmitting
-                ? isInstagramDmMethod
-                  ? "DM 인증 준비 중"
-                  : "접수 중"
-                : isInstagramDmMethod && isInstagramDmRestoring
-                  ? "인증 상태 확인 중"
-                : isVerificationLoading
-                  ? "계정 확인 중"
-                : isInstagramDmMethod
-                  ? "Instagram DM 인증 시작"
-                : approved
-                  ? "플랫폼 인증 추가 요청"
-                  : verificationStatus === "rejected"
-                    ? "계정 인증 재제출"
-                  : "계정 소유 인증 요청"}
+              <span aria-live="polite">
+                {isSubmitting
+                  ? isInstagramDmMethod
+                    ? "DM 인증 준비 중"
+                    : submissionProgress.phase === "hashing"
+                      ? "파일 확인 중"
+                      : submissionProgress.phase === "ticketing"
+                        ? "업로드 준비 중"
+                        : submissionProgress.phase === "uploading"
+                          ? `업로드 중${
+                              submissionProgress.percent === undefined
+                                ? ""
+                                : ` ${submissionProgress.percent}%`
+                            }`
+                          : "제출 확인 중"
+                  : submissionNeedsRetry
+                    ? "다시 시도"
+                    : isInstagramDmMethod && isInstagramDmRestoring
+                      ? "인증 상태 확인 중"
+                      : isVerificationLoading
+                        ? "계정 확인 중"
+                        : isInstagramDmMethod
+                          ? "Instagram DM 인증 시작"
+                          : approved
+                            ? "플랫폼 인증 추가 요청"
+                            : verificationStatus === "rejected"
+                              ? "계정 인증 재제출"
+                              : "계정 소유 인증 요청"}
+              </span>
             </button>
           </form>
           )
@@ -1470,7 +1661,6 @@ function createChallengeCode() {
   const token = Array.from(values, (value) => alphabet[value % alphabet.length]);
   return `DS-${token.slice(0, 4).join("")}-${token.slice(4).join("")}`;
 }
-
 function formatInstagramDmExpiry(value: string) {
   const expiresAt = new Date(value);
   if (Number.isNaN(expiresAt.getTime())) return "잠시 후";
@@ -1512,13 +1702,4 @@ function inferHandle(urlValue: string, platform: InfluencerPlatform) {
   } catch {
     return "";
   }
-}
-
-function readFileAsDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ""));
-    reader.onerror = () => reject(new Error("파일을 읽지 못했습니다."));
-    reader.readAsDataURL(file);
-  });
 }

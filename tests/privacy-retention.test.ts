@@ -546,12 +546,12 @@ test("append-only evidence stays protected outside the bounded purge function", 
 test("privacy notice version and verified backup window are explicit", () => {
   const runbook = readSource("../docs/privacy-retention-runbook.md");
 
-  assert.match(server, /const signupPrivacyPolicyVersion = "2026-08-11\.2"/);
+  assert.match(server, /const signupPrivacyPolicyVersion = "2026-08-13\.1"/);
   assert.match(
     signupPage,
-    /const PRIVACY_POLICY_DOCUMENT_VERSION = "2026-08-11\.2"/,
+    /const PRIVACY_POLICY_DOCUMENT_VERSION = "2026-08-13\.1"/,
   );
-  assert.match(privacyPage, /documentVersion: "2026-08-11\.2"/);
+  assert.match(privacyPage, /documentVersion: "2026-08-13\.1"/);
   assert.match(runbook, /네이버 블로그 캠페인 지원 조건 확인값[\s\S]+30일/);
   assert.match(runbook, /네이버 인플루언서 자동 확인·본인 확인 재사용 기록[\s\S]+1년/);
   assert.match(privacyPage, /본인 확인 재사용 기록[\s\S]+최대 1년간/);
@@ -630,7 +630,7 @@ test("campaign contact evidence is immutable, private and redacted after 90 days
   const analytics = readSource("../src/domain/analytics.ts");
   assert.match(
     analytics,
-    /export const isMicrosoftClarityCollectionEnabled = \(\) => false/,
+    /export const isMicrosoftClarityCollectionEnabled = \(\) => true/,
   );
   assert.match(privacyPage, /캠페인 종료 또는 콘텐츠 제출 마감 후 90일까지/);
   assert.match(privacyPage, /공개 캠페인·일반 프로필·메시지·알림에는 표시하지 않습니다/);
@@ -652,6 +652,212 @@ test("campaign contact evidence is immutable, private and redacted after 90 days
       Object.fromEntries(result.rows.map((row) => [row.boundary, row.due])),
       { exact: true, second_early: false },
     );
+  } finally {
+    await db.close();
+  }
+});
+
+test("account erasure RPC waits for issued upload capability cleanup before Auth finalization", async () => {
+  const db = new PGlite();
+  const profileId = "f1000000-0000-4000-8000-000000000001";
+  const requestId = "f2000000-0000-4000-8000-000000000001";
+  const ticketId = "f3000000-0000-4000-8000-000000000001";
+  const workerId = "qa.private-upload-erasure";
+  try {
+    await applyPrivacySchemaThroughFinalGuaranteesMigration(db);
+    for (const file of [
+      "20260811191000_reserve_deliverable_upload_quota.sql",
+      "20260811194000_atomic_deliverable_mutations.sql",
+      "20260811202000_private_file_upload_tickets.sql",
+    ]) {
+      await db.exec(readSource(`../supabase/migrations/${file}`));
+    }
+    await db.exec(`set "request.jwt.claim.role" = 'service_role'`);
+    await db.query(
+      `insert into auth.users(id,email,raw_user_meta_data)
+       values($1,'erasure-ticket@qa.invalid',$2::jsonb)`,
+      [profileId, JSON.stringify({ role: "influencer", name: "Erasure QA" })],
+    );
+    await db.query(
+      `insert into public.profiles(id,role,name,email,data_origin)
+       values($1,'influencer','Erasure QA','erasure-ticket@qa.invalid','production')
+       on conflict(id) do update set role='influencer', name='Erasure QA',
+         email='erasure-ticket@qa.invalid', data_origin='production'`,
+      [profileId],
+    );
+
+    const issued = await db.query<{
+      outcome: string;
+      cleanup_not_before: string;
+    }>(
+      `select outcome,cleanup_not_before
+       from public.issue_directsign_private_file_upload_ticket(
+         $1::uuid,'influencer_verification',$2::uuid,$1::uuid,
+         null,null,'image/png',8,$3,null,20,104857600,104857600
+       )`,
+      [ticketId, profileId, "a".repeat(64)],
+    );
+    assert.equal(issued.rows[0]?.outcome, "issued");
+
+    const requested = await db.query<{
+      result: { status: string; pending_storage: number };
+    }>(
+      `select public.request_account_erasure(
+        $1::uuid,$2::uuid,'influencer',$3,clock_timestamp()
+      ) as result`,
+      [requestId, profileId, "b".repeat(64)],
+    );
+    assert.equal(requested.rows[0]?.result.status, "waiting_storage");
+    assert.equal(requested.rows[0]?.result.pending_storage, 1);
+
+    const gated = await db.query<{
+      result: { status: string; pending_storage: number };
+    }>(
+      "select public.finalize_account_erasure($1::uuid,clock_timestamp()) as result",
+      [requestId],
+    );
+    assert.equal(gated.rows[0]?.result.status, "waiting_storage");
+    assert.equal(gated.rows[0]?.result.pending_storage, 1);
+
+    const state = await db.query<{
+      state: string;
+      exact_due: boolean;
+      capability_window_elapsed_by_cleanup: boolean;
+    }>(
+      `select ticket.state,
+              queue.due_at=ticket.cleanup_not_before as exact_due,
+              ticket.cleanup_not_before >= ticket.issued_at + interval '27 hours'
+                as capability_window_elapsed_by_cleanup
+       from public.directsign_private_file_upload_tickets as ticket
+       join public.privacy_storage_deletion_queue as queue
+         on queue.erasure_request_id=ticket.erasure_request_id
+        and queue.bucket=ticket.bucket
+        and queue.object_path=ticket.object_path
+       where ticket.id=$1`,
+      [ticketId],
+    );
+    assert.deepEqual(state.rows[0], {
+      state: "cleanup_pending",
+      exact_due: true,
+      capability_window_elapsed_by_cleanup: true,
+    });
+
+    const blockedFinalize = await db.query<{ outcome: string }>(
+      `select outcome from public.insert_directsign_verification_request_from_ticket(
+        $1::uuid,$2::uuid,'influencer_verification',$3::jsonb
+      )`,
+      [
+        ticketId,
+        profileId,
+        JSON.stringify({
+          id: ticketId,
+          target_type: "influencer_account",
+          target_id: profileId,
+          verification_type: "platform_account",
+          status: "pending",
+          profile_id: profileId,
+          subject_name: "Erasure QA",
+          evidence_file_name: "evidence.png",
+          evidence_file_mime: "image/png",
+          evidence_file_size: 8,
+          evidence_snapshot_json: {
+            evidence_file: {
+              provider: "supabase_storage",
+              bucket: "directsign-private",
+              path: `verification-influencer/${profileId}/${ticketId}-evidence.png`,
+              content_type: "image/png",
+              byte_size: 8,
+              sha256: "a".repeat(64),
+            },
+          },
+        }),
+      ],
+    );
+    assert.equal(blockedFinalize.rows[0]?.outcome, "upload_ticket_expired");
+
+    await db.query(
+      `update public.directsign_private_file_upload_tickets
+       set issued_at=clock_timestamp()-interval '30 hours',
+           finalize_expires_at=clock_timestamp()-interval '29 hours',
+           cleanup_not_before=clock_timestamp()-interval '1 hour'
+       where id=$1`,
+      [ticketId],
+    );
+    await db.query(
+      `update public.privacy_storage_deletion_queue
+       set due_at=clock_timestamp()-interval '1 second',
+           available_at=clock_timestamp()-interval '1 second'
+       where erasure_request_id=$1`,
+      [requestId],
+    );
+    const competingPrivateCleanup = await db.query(
+      `select * from public.claim_directsign_private_upload_cleanup(
+        'f4000000-0000-4000-8000-000000000001'::uuid,10,300
+      )`,
+    );
+    assert.equal(competingPrivateCleanup.rows.length, 0);
+    const claimed = await db.query<{ id: string }>(
+      `select id from public.claim_privacy_storage_deletions(
+        $1,10,$2::uuid,clock_timestamp(),120
+      )`,
+      [workerId, requestId],
+    );
+    assert.equal(claimed.rows.length, 1);
+    const queueId = claimed.rows[0]?.id;
+    const authorized = await db.query<{
+      result: { authorized: boolean };
+    }>(
+      `select public.authorize_privacy_storage_deletion(
+        $1::uuid,$2,clock_timestamp()
+      ) as result`,
+      [queueId, workerId],
+    );
+    assert.equal(authorized.rows[0]?.result.authorized, true);
+    const completed = await db.query<{
+      result: { accepted: boolean; request_ready_to_finalize: boolean };
+    }>(
+      `select public.complete_privacy_storage_deletion(
+        $1::uuid,$2,true,null,clock_timestamp()
+      ) as result`,
+      [queueId, workerId],
+    );
+    assert.equal(completed.rows[0]?.result.accepted, true);
+    assert.equal(completed.rows[0]?.result.request_ready_to_finalize, true);
+
+    const authGate = await db.query<{
+      result: { status: string; requires_auth_user_deletion: boolean };
+    }>(
+      "select public.finalize_account_erasure($1::uuid,clock_timestamp()) as result",
+      [requestId],
+    );
+    assert.equal(authGate.rows[0]?.result.status, "ready_to_finalize");
+    assert.equal(authGate.rows[0]?.result.requires_auth_user_deletion, true);
+    await db.query("delete from auth.users where id=$1", [profileId]);
+    const final = await db.query<{
+      result: { status: string; requires_auth_user_deletion: boolean };
+    }>(
+      "select public.finalize_account_erasure($1::uuid,clock_timestamp()) as result",
+      [requestId],
+    );
+    assert.equal(final.rows[0]?.result.status, "completed");
+    assert.equal(final.rows[0]?.result.requires_auth_user_deletion, false);
+    const postFinalize = await db.query<{
+      ticket_count: number;
+      audit_queue_count: number;
+    }>(
+      `select
+         (select count(*)::integer
+          from public.directsign_private_file_upload_tickets
+          where erasure_request_id=$1) as ticket_count,
+         (select count(*)::integer
+          from public.privacy_storage_deletion_queue
+          where erasure_request_id=$1 and status='completed') as audit_queue_count`,
+      [requestId],
+    );
+    assert.deepEqual(postFinalize.rows[0], {
+      ticket_count: 0,
+      audit_queue_count: 1,
+    });
   } finally {
     await db.close();
   }

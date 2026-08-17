@@ -7809,25 +7809,10 @@ function getCampaignEndedDateValue(campaign: CampaignGroup) {
 
 function getCampaignLifecycle(campaign: CampaignGroup): CampaignLifecycle {
   if (campaign.marketplaceCampaign?.status === "ended") return "ENDED";
-  if (
-    campaign.acceptedParticipantCount > 0 &&
-    campaign.completedCount >= campaign.acceptedParticipantCount
-  ) {
-    return "ENDED";
-  }
-  if (
-    campaign.marketplaceCampaign?.status === "open" &&
-    !isPastCampaignDeadline(campaign.marketplaceCampaign.deadline)
-  ) {
-    return "RECRUITING";
-  }
   if (campaign.acceptedParticipantCount > 0 || campaign.contracts.length > 0) {
     return "IN_PROGRESS";
   }
   if (campaign.marketplaceCampaign?.status === "closed") return "ENDED";
-  if (isPastCampaignDeadline(campaign.marketplaceCampaign?.deadline)) {
-    return "ENDED";
-  }
 
   return "RECRUITING";
 }
@@ -8023,13 +8008,14 @@ function getCampaignAlertToneClass(tone: CampaignAlertTone) {
 }
 
 function getCampaignLifecycleMeta(campaign: CampaignGroup) {
-  const recruitmentStatus = campaign.marketplaceCampaign?.status;
-
   if (campaign.lifecycle === "RECRUITING") {
+    const deadlinePassed = isPastCampaignDeadline(
+      campaign.marketplaceCampaign?.deadline,
+    );
     return {
-      label: recruitmentStatus === "closed" ? "종료" : "모집중",
+      label: deadlinePassed ? "마감됨" : "모집중",
       className:
-        recruitmentStatus === "closed"
+        deadlinePassed
           ? "border-neutral-200 bg-neutral-100 text-neutral-600"
           : "border-blue-200 bg-blue-50 text-blue-700",
     };
@@ -8060,7 +8046,6 @@ function getCampaignStatusActions(campaign: CampaignGroup) {
 
   if (
     campaign.marketplaceCampaign &&
-    campaign.lifecycle === "RECRUITING" &&
     status === "open"
   ) {
     actions.push({
@@ -8089,7 +8074,7 @@ function getCampaignStatusActions(campaign: CampaignGroup) {
 
   if (
     campaign.marketplaceCampaign &&
-    status !== "ended" &&
+    status === "closed" &&
     campaign.acceptedParticipantCount > 0 &&
     campaign.completedCount >= campaign.acceptedParticipantCount
   ) {
@@ -8804,7 +8789,6 @@ function getSettlementExportStatus(contract: Contract) {
     return "지급 확인";
   }
 
-  if (contract.settlement?.status === "unpaid_inquiry") return "미지급 문의";
   return "";
 }
 
@@ -8935,7 +8919,6 @@ function buildAdvertiserContractExportSheet(contracts: Contract[]): XlsxSheet {
       "서명자 이메일",
       "정산 상태",
       "정산 확인일",
-      "정산 문의수",
       "조항 수",
       "승인 조항 수",
       "수정요청 조항 수",
@@ -9016,7 +8999,6 @@ function buildAdvertiserContractExportSheet(contracts: Contract[]): XlsxSheet {
         formatPublicContactValue(signature.signerEmail),
         getSettlementExportStatus(contract),
         formatExportDateTime(contract.settlement?.advertiser_confirmed_at),
-        contract.settlement?.inquiries?.length ?? "",
         clauseCounts.total,
         clauseCounts.approved,
         clauseCounts.changeRequested,

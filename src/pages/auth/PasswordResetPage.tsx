@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -30,16 +30,6 @@ const roleCopy = {
   },
 } satisfies Record<ResetRole, { label: string; loginHref: string; description: string }>;
 
-function getRecoveryAccessToken() {
-  if (typeof window === "undefined") return "";
-
-  const hash = window.location.hash.replace(/^#/, "");
-  const hashParams = new URLSearchParams(hash);
-  const queryParams = new URLSearchParams(window.location.search);
-
-  return hashParams.get("access_token") ?? queryParams.get("access_token") ?? "";
-}
-
 function getResetRole(search: string): ResetRole | null {
   const role = new URLSearchParams(search).get("role");
   return role === "advertiser" || role === "influencer" ? role : null;
@@ -48,20 +38,32 @@ function getResetRole(search: string): ResetRole | null {
 export function PasswordResetPage() {
   const location = useLocation();
   const role = getResetRole(location.search);
-  const [accessToken] = useState(() => getRecoveryAccessToken());
+  const recoveryStatus = new URLSearchParams(location.search).get("recovery");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
-  const isCompleting = Boolean(accessToken);
+  const [error, setError] = useState(() =>
+    recoveryStatus === "invalid"
+      ? "재설정 링크가 만료되었습니다. 새 링크를 요청해 주세요."
+      : "",
+  );
+  const isCompleting = recoveryStatus === "1";
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.location.hash) return;
+    window.history.replaceState(
+      null,
+      "",
+      `${window.location.pathname}${window.location.search}`,
+    );
+  }, []);
 
   if (!role) {
     return (
       <PasswordResetRoleChoice
         currentSearch={location.search}
-        recoveryHash={location.hash}
       />
     );
   }
@@ -134,7 +136,10 @@ export function PasswordResetPage() {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         credentials: "include",
-        body: JSON.stringify({ access_token: accessToken, password }),
+        body: JSON.stringify({
+          password,
+          password_confirm: passwordConfirm,
+        }),
       });
       const data = (await response.json().catch(() => ({}))) as {
         message?: string;
@@ -296,14 +301,12 @@ export function PasswordResetPage() {
 
 function PasswordResetRoleChoice({
   currentSearch,
-  recoveryHash,
 }: {
   currentSearch: string;
-  recoveryHash: string;
 }) {
   const loginHref = preserveAuthContext("/login", currentSearch);
   const getRoleHref = (role: ResetRole) =>
-    `${preserveAuthContext(`/reset-password?role=${role}`, currentSearch)}${recoveryHash}`;
+    preserveAuthContext(`/reset-password?role=${role}`, currentSearch);
 
   return (
     <main className="min-h-screen bg-[#f7f6f3] px-5 pb-5 pt-0 font-sans text-neutral-950 sm:px-6">

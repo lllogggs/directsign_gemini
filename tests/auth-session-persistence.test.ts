@@ -1,5 +1,6 @@
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
@@ -71,6 +72,17 @@ type FakeSupabaseState = {
   rateLimitClearUnavailable: boolean;
   rateLimitUnavailable: boolean;
   rejectExpiredAccessLogout: boolean;
+  recoveryRequests: Array<{
+    redirectTo: string;
+    body: Record<string, unknown>;
+  }>;
+  pkceGrantCalls: number;
+  pkceConsumedCodes: Set<string>;
+  passwordUpdateCalls: number;
+  authUserCalls: number;
+  logoutScopes: string[];
+  rateLimitCounts: Map<string, number>;
+  recoveryAccessToken: string;
   profileRoleOverride?: "marketer" | "influencer";
 };
 
@@ -96,6 +108,14 @@ const fakeSupabaseState: FakeSupabaseState = {
   rateLimitClearUnavailable: false,
   rateLimitUnavailable: false,
   rejectExpiredAccessLogout: false,
+  recoveryRequests: [],
+  pkceGrantCalls: 0,
+  pkceConsumedCodes: new Set(),
+  passwordUpdateCalls: 0,
+  authUserCalls: 0,
+  logoutScopes: [],
+  rateLimitCounts: new Map(),
+  recoveryAccessToken: "",
 };
 
 let fakeSupabaseServer: Server;
@@ -118,6 +138,7 @@ const trackedEnvironmentKeys = [
   "DIRECTSIGN_TOKEN_ENCRYPTION_SECRET",
   "USER_SESSION_FAST_PATH_SECRET",
   "DISABLE_PUBLIC_MARKETPLACE_CACHE_WARMUP",
+  "APP_URL",
 ] as const;
 
 const listen = (server: Server) =>
@@ -221,6 +242,28 @@ const createUnsignedTestAccessToken = (
   ].join(".");
 };
 
+const createRecoveryAccessToken = () => {
+  const now = Math.floor(Date.now() / 1_000);
+  return [
+    Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString(
+      "base64url",
+    ),
+    Buffer.from(
+      JSON.stringify({
+        sub: advertiserUserId,
+        session_id: "33333333-3333-4333-8333-333333333333",
+        aal: "aal1",
+        aud: "authenticated",
+        role: "authenticated",
+        exp: now + 600,
+        iat: now,
+        amr: [{ method: "recovery", timestamp: now }],
+      }),
+    ).toString("base64url"),
+    "test-signature",
+  ].join(".");
+};
+
 const resetFakeSupabase = (mode: RefreshMode, delayMs = 0) => {
   fakeSupabaseState.mode = mode;
   fakeSupabaseState.delayMs = delayMs;
@@ -243,6 +286,14 @@ const resetFakeSupabase = (mode: RefreshMode, delayMs = 0) => {
   fakeSupabaseState.rateLimitClearUnavailable = false;
   fakeSupabaseState.rateLimitUnavailable = false;
   fakeSupabaseState.rejectExpiredAccessLogout = false;
+  fakeSupabaseState.recoveryRequests = [];
+  fakeSupabaseState.pkceGrantCalls = 0;
+  fakeSupabaseState.pkceConsumedCodes.clear();
+  fakeSupabaseState.passwordUpdateCalls = 0;
+  fakeSupabaseState.authUserCalls = 0;
+  fakeSupabaseState.logoutScopes = [];
+  fakeSupabaseState.rateLimitCounts.clear();
+  fakeSupabaseState.recoveryAccessToken = "";
   fakeSupabaseState.profileRoleOverride = undefined;
 };
 
@@ -488,6 +539,57 @@ describe("server auth refresh integration", { concurrency: false }, () => {
 
       if (
         request.method === "POST" &&
+        requestUrl.pathname === "/auth/v1/recover"
+      ) {
+        fakeSupabaseState.recoveryRequests.push({
+          redirectTo: requestUrl.searchParams.get("redirect_to") ?? "",
+          body: await readJsonBody(request),
+        });
+        sendJson(response, 200, {});
+        return;
+      }
+
+      if (
+        request.method === "POST" &&
+        requestUrl.pathname === "/auth/v1/token" &&
+        requestUrl.searchParams.get("grant_type") === "pkce"
+      ) {
+        fakeSupabaseState.pkceGrantCalls += 1;
+        const body = await readJsonBody(request);
+        const authCode = String(body.auth_code ?? "");
+        const verifier = String(body.code_verifier ?? "");
+        const latestRecovery = fakeSupabaseState.recoveryRequests.at(-1);
+        const expectedChallenge = String(
+          latestRecovery?.body.code_challenge ?? "",
+        );
+        const actualChallenge = createHash("sha256")
+          .update(verifier)
+          .digest("base64url");
+        if (
+          !authCode ||
+          fakeSupabaseState.pkceConsumedCodes.has(authCode) ||
+          expectedChallenge !== actualChallenge
+        ) {
+          sendJson(response, 400, { message: "invalid auth code" });
+          return;
+        }
+        fakeSupabaseState.pkceConsumedCodes.add(authCode);
+        fakeSupabaseState.recoveryAccessToken = createRecoveryAccessToken();
+        sendJson(response, 200, {
+          access_token: fakeSupabaseState.recoveryAccessToken,
+          refresh_token: "unused-recovery-refresh",
+          expires_in: 600,
+          user: {
+            id: advertiserUserId,
+            email: profileForUser(advertiserUserId).email,
+            email_confirmed_at: "2026-01-01T00:00:00.000Z",
+          },
+        });
+        return;
+      }
+
+      if (
+        request.method === "POST" &&
         requestUrl.pathname === "/auth/v1/token" &&
         requestUrl.searchParams.get("grant_type") === "password"
       ) {
@@ -500,13 +602,10 @@ describe("server auth refresh integration", { concurrency: false }, () => {
             ? advertiserUserId
             : influencerUserId;
         sendJson(response, 200, {
-          access_token:
-            userId === adminUserId
-              ? createUnsignedTestAccessToken(
-                  userId,
-                  authSessionIdForUser(userId),
-                )
-              : `${userId}-password-access`,
+          access_token: createUnsignedTestAccessToken(
+            userId,
+            authSessionIdForUser(userId),
+          ),
           refresh_token: `${userId}-password-refresh`,
           expires_in: userSessionAccessMaxAgeSeconds,
           user: {
@@ -555,12 +654,10 @@ describe("server auth refresh integration", { concurrency: false }, () => {
         const userId = refreshToken.includes("advertiser")
           ? advertiserUserId
           : influencerUserId;
-        const accessToken = refreshToken.includes("origin-binding")
-          ? createUnsignedTestAccessToken(
-              userId,
-              `session-${refreshToken}`,
-            )
-          : `${refreshToken}-access-rotated`;
+        const accessToken = createUnsignedTestAccessToken(
+          userId,
+          authSessionIdForUser(userId),
+        );
         const reply = () =>
           sendJson(response, 200, {
             access_token: accessToken,
@@ -590,6 +687,22 @@ describe("server auth refresh integration", { concurrency: false }, () => {
           /^Bearer\s+/i,
           "",
         );
+        if (accessToken === fakeSupabaseState.recoveryAccessToken) {
+          if (request.method === "PUT") {
+            fakeSupabaseState.passwordUpdateCalls += 1;
+            sendJson(response, 200, {
+              id: advertiserUserId,
+              email: profileForUser(advertiserUserId).email,
+            });
+            return;
+          }
+          fakeSupabaseState.authUserCalls += 1;
+          sendJson(response, 200, {
+            id: advertiserUserId,
+            email: profileForUser(advertiserUserId).email,
+          });
+          return;
+        }
         const accessTokenClaims = (() => {
           try {
             return JSON.parse(
@@ -602,6 +715,7 @@ describe("server auth refresh integration", { concurrency: false }, () => {
           }
         })();
         if (accessTokenClaims.sub === adminUserId) {
+          fakeSupabaseState.authUserCalls += 1;
           sendJson(response, 200, {
             id: adminUserId,
             email: profileForUser(adminUserId).email,
@@ -722,6 +836,9 @@ describe("server auth refresh integration", { concurrency: false }, () => {
           "",
         );
         fakeSupabaseState.logoutAccessTokens.push(accessToken);
+        fakeSupabaseState.logoutScopes.push(
+          requestUrl.searchParams.get("scope") ?? "",
+        );
         if (
           fakeSupabaseState.rejectExpiredAccessLogout &&
           accessToken.includes("expired-access")
@@ -736,10 +853,62 @@ describe("server auth refresh integration", { concurrency: false }, () => {
 
       if (
         request.method === "POST" &&
+        requestUrl.pathname === "/rest/v1/rpc/verify_directsign_auth_session"
+      ) {
+        sendJson(response, 200, { active: true, reason: "active", generation: 0 });
+        return;
+      }
+
+      if (
+        request.method === "POST" &&
+        requestUrl.pathname === "/rest/v1/rpc/begin_directsign_password_reset"
+      ) {
+        sendJson(response, 200, { outcome: "started", generation: 1 });
+        return;
+      }
+      if (
+        request.method === "POST" &&
+        requestUrl.pathname === "/rest/v1/rpc/finish_directsign_password_reset"
+      ) {
+        sendJson(response, 200, { outcome: "finished", generation: 2 });
+        return;
+      }
+      if (
+        request.method === "POST" &&
+        requestUrl.pathname === "/rest/v1/rpc/cancel_directsign_password_reset"
+      ) {
+        sendJson(response, 200, { outcome: "cancelled", generation: 2 });
+        return;
+      }
+      if (
+        request.method === "POST" &&
+        requestUrl.pathname ===
+          "/rest/v1/rpc/mark_directsign_password_reset_uncertain"
+      ) {
+        sendJson(response, 200, { outcome: "retained", generation: 1 });
+        return;
+      }
+
+      if (
+        request.method === "POST" &&
         requestUrl.pathname === "/rest/v1/rpc/record_operational_auth_metric"
       ) {
         fakeSupabaseState.authMetricCalls.push(await readJsonBody(request));
         sendJson(response, 200, null);
+        return;
+      }
+
+      if (
+        request.method === "POST" &&
+        requestUrl.pathname ===
+          "/rest/v1/rpc/register_directsign_admin_operator_session"
+      ) {
+        const body = await readJsonBody(request);
+        sendJson(response, 200, {
+          outcome: "registered",
+          authenticated_at: body.p_authenticated_at,
+          absolute_expires_at: body.p_absolute_expires_at,
+        });
         return;
       }
 
@@ -830,8 +999,15 @@ describe("server auth refresh integration", { concurrency: false }, () => {
           sendJson(response, 503, { message: "rate limiter unavailable" });
           return;
         }
+        const key = String(body.p_bucket_key ?? "");
+        const count = (fakeSupabaseState.rateLimitCounts.get(key) ?? 0) + 1;
+        fakeSupabaseState.rateLimitCounts.set(key, count);
+        const maxAttempts = Number(body.p_max_attempts ?? 0);
         sendJson(response, 200, [
-          { blocked: false, retry_after_seconds: 0 },
+          {
+            blocked: count > maxAttempts,
+            retry_after_seconds: count > maxAttempts ? 60 : 0,
+          },
         ]);
         return;
       }
@@ -902,6 +1078,7 @@ describe("server auth refresh integration", { concurrency: false }, () => {
       USER_SESSION_FAST_PATH_SECRET:
         "session-test-fast-path-secret-0123456789abcdef",
       DISABLE_PUBLIC_MARKETPLACE_CACHE_WARMUP: "1",
+      APP_URL: "https://yeollock.test",
     });
 
     const { app } = await import("../server/index.ts");
@@ -1011,7 +1188,7 @@ describe("server auth refresh integration", { concurrency: false }, () => {
         role,
         secret: process.env.DIRECTSIGN_TOKEN_ENCRYPTION_SECRET!,
         userId,
-        authSessionId: `session-${refreshToken}`,
+        authSessionId: authSessionIdForUser(userId),
       };
 
       assert.equal(
@@ -1036,8 +1213,10 @@ describe("server auth refresh integration", { concurrency: false }, () => {
     const response = await fetch(`${appBaseUrl}/api/influencer/session`, {
       headers: {
         Accept: "application/json",
-        Cookie:
-          "directsign_influencer_access=temporary-access; directsign_influencer_refresh=influencer-preserved",
+        Cookie: `directsign_influencer_access=${createUnsignedTestAccessToken(
+          influencerUserId,
+          "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        )}; directsign_influencer_refresh=influencer-preserved`,
       },
     });
     const payload = (await response.json()) as { retryable?: boolean };
@@ -1054,8 +1233,10 @@ describe("server auth refresh integration", { concurrency: false }, () => {
     const response = await fetch(`${appBaseUrl}/api/advertiser/session`, {
       headers: {
         Accept: "application/json",
-        Cookie:
-          "directsign_advertiser_access=temporary-access; directsign_advertiser_refresh=advertiser-preserved",
+        Cookie: `directsign_advertiser_access=${createUnsignedTestAccessToken(
+          advertiserUserId,
+          "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+        )}; directsign_advertiser_refresh=advertiser-preserved`,
       },
     });
     const elapsedMs = Date.now() - startedAt;
@@ -1170,7 +1351,10 @@ describe("server auth refresh integration", { concurrency: false }, () => {
       headers: {
         Accept: "application/json",
         Cookie: [
-          `directsign_influencer_access=${refreshToken}-access-rotated`,
+          `directsign_influencer_access=${createUnsignedTestAccessToken(
+            influencerUserId,
+            influencerAuthSessionId,
+          )}`,
           `directsign_influencer_refresh=${refreshToken}-refresh-rotated`,
         ].join("; "),
       },
@@ -1218,7 +1402,7 @@ describe("server auth refresh integration", { concurrency: false }, () => {
     assert.equal(fakeSupabaseState.refreshCalls, 1);
     assert.deepEqual(fakeSupabaseState.logoutAccessTokens, [
       "expired-access",
-      `${refreshToken}-access-rotated`,
+      createUnsignedTestAccessToken(influencerUserId, influencerAuthSessionId),
     ]);
     const cookies = getCookieHeaders(response);
     assert.ok(
@@ -1248,7 +1432,10 @@ describe("server auth refresh integration", { concurrency: false }, () => {
       headers: {
         Accept: "application/json",
         Cookie: [
-          `directsign_advertiser_access=${refreshToken}-access-rotated`,
+          `directsign_advertiser_access=${createUnsignedTestAccessToken(
+            advertiserUserId,
+            advertiserAuthSessionId,
+          )}`,
           `directsign_advertiser_refresh=${refreshToken}-refresh-rotated`,
         ].join("; "),
       },
@@ -1293,7 +1480,10 @@ describe("server auth refresh integration", { concurrency: false }, () => {
       headers: {
         Accept: "application/json",
         Cookie: [
-          `directsign_advertiser_access=${refreshToken}-access-rotated`,
+          `directsign_advertiser_access=${createUnsignedTestAccessToken(
+            advertiserUserId,
+            advertiserAuthSessionId,
+          )}`,
           `directsign_advertiser_refresh=${refreshToken}-refresh-rotated`,
         ].join("; "),
       },
@@ -1702,6 +1892,212 @@ describe("server auth refresh integration", { concurrency: false }, () => {
       assert.equal(count, 1);
     }
     fakeSupabaseState.adminMfaFinalizeUnavailable = false;
+  });
+
+  it("keeps successful password recovery requests rate-limited", async () => {
+    resetFakeSupabase("success");
+    const requestReset = () =>
+      fetch(`${appBaseUrl}/api/auth/password-reset/request`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: "session-advertiser@example.test",
+          role: "advertiser",
+        }),
+      });
+
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      assert.equal((await requestReset()).status, 202);
+    }
+    const blocked = await requestReset();
+    assert.equal(blocked.status, 429);
+    assert.equal(fakeSupabaseState.recoveryRequests.length, 8);
+    assert.deepEqual(fakeSupabaseState.rateLimitClears, []);
+    for (const recovery of fakeSupabaseState.recoveryRequests) {
+      assert.equal(recovery.body.code_challenge_method, "s256");
+      assert.match(
+        String(recovery.body.code_challenge ?? ""),
+        /^[A-Za-z0-9_-]{43}$/,
+      );
+      assert.match(recovery.redirectTo, /\/api\/auth\/password-reset\/callback/);
+      assert.doesNotMatch(recovery.redirectTo, /access_token/i);
+    }
+  });
+
+  it("exchanges one PKCE recovery code server-side and revokes every session", async () => {
+    resetFakeSupabase("success");
+    const requestResponse = await fetch(
+      `${appBaseUrl}/api/auth/password-reset/request`,
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: "session-advertiser@example.test",
+          role: "advertiser",
+        }),
+      },
+    );
+    assert.equal(requestResponse.status, 202);
+    const providerRedirect = new URL(
+      fakeSupabaseState.recoveryRequests[0].redirectTo,
+    );
+    providerRedirect.searchParams.set("code", "one-time-recovery-code");
+    const callbackResponse = await fetch(
+      `${appBaseUrl}${providerRedirect.pathname}${providerRedirect.search}`,
+      { redirect: "manual" },
+    );
+    assert.equal(callbackResponse.status, 303);
+    assert.equal(callbackResponse.headers.get("cache-control"), "no-store");
+    assert.equal(callbackResponse.headers.get("referrer-policy"), "no-referrer");
+    const location = callbackResponse.headers.get("location") ?? "";
+    assert.match(location, /\/reset-password\?role=advertiser&recovery=1$/);
+    assert.doesNotMatch(location, /code=|state=|access_token=/);
+    const pendingCookie = getCookieHeaders(callbackResponse).find((cookie) =>
+      cookie.startsWith("directsign_password_reset_pending="),
+    );
+    assert.ok(pendingCookie);
+    assert.match(pendingCookie, /HttpOnly/i);
+    assert.match(pendingCookie, /SameSite=Strict/i);
+    assert.match(pendingCookie, /Path=\/api\/auth\/password-reset/i);
+    const pendingMaxAge = Number(
+      pendingCookie.match(/Max-Age=(\d+)/i)?.[1] ?? "0",
+    );
+    assert.ok(pendingMaxAge > 0 && pendingMaxAge <= 600, pendingCookie);
+    assert.equal(fakeSupabaseState.pkceGrantCalls, 1);
+    assert.equal(fakeSupabaseState.authUserCalls, 1);
+
+    const jar = new Map<string, string>();
+    applySetCookies(jar, [pendingCookie]);
+    const completeResponse = await fetch(
+      `${appBaseUrl}/api/auth/password-reset/complete`,
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          Cookie: serializeCookieJar(jar),
+        },
+        body: JSON.stringify({
+          password: "ChangedPassword!123",
+          password_confirm: "ChangedPassword!123",
+        }),
+      },
+    );
+    assert.equal(completeResponse.status, 200);
+    assert.equal(fakeSupabaseState.pkceGrantCalls, 1);
+    assert.equal(fakeSupabaseState.authUserCalls, 2);
+    assert.equal(fakeSupabaseState.passwordUpdateCalls, 1);
+    assert.deepEqual(fakeSupabaseState.logoutScopes, ["global"]);
+    const completionCookies = getCookieHeaders(completeResponse);
+    assert.ok(
+      completionCookies.some(
+        (cookie) =>
+          cookie.startsWith("directsign_password_reset_pending=;") &&
+          /Max-Age=0/i.test(cookie),
+      ),
+      JSON.stringify(completionCookies),
+    );
+    assert.ok(
+      completionCookies.some((cookie) =>
+        cookie.startsWith("directsign_advertiser_access=;"),
+      ),
+    );
+    assert.ok(
+      completionCookies.some((cookie) =>
+        cookie.startsWith("directsign_influencer_access=;"),
+      ),
+    );
+  });
+
+  it("rejects ordinary bearer tokens and makes a recovery code one-time", async () => {
+    resetFakeSupabase("success");
+    const ordinaryToken = createUnsignedTestAccessToken(
+      advertiserUserId,
+      "44444444-4444-4444-8444-444444444444",
+    );
+    const noCookieResponse = await fetch(
+      `${appBaseUrl}/api/auth/password-reset/complete`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          access_token: ordinaryToken,
+          password: "ChangedPassword!123",
+          password_confirm: "ChangedPassword!123",
+        }),
+      },
+    );
+    assert.equal(noCookieResponse.status, 401);
+    assert.equal(fakeSupabaseState.pkceGrantCalls, 0);
+    assert.equal(fakeSupabaseState.passwordUpdateCalls, 0);
+
+    const requestResponse = await fetch(
+      `${appBaseUrl}/api/auth/password-reset/request`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: "session-advertiser@example.test",
+          role: "advertiser",
+        }),
+      },
+    );
+    assert.equal(requestResponse.status, 202);
+    const providerRedirect = new URL(
+      fakeSupabaseState.recoveryRequests[0].redirectTo,
+    );
+    providerRedirect.searchParams.set("code", "single-use-code");
+    const callbackResponse = await fetch(
+      `${appBaseUrl}${providerRedirect.pathname}${providerRedirect.search}`,
+      { redirect: "manual" },
+    );
+    const pendingCookie = getCookieHeaders(callbackResponse).find((cookie) =>
+      cookie.startsWith("directsign_password_reset_pending="),
+    )!;
+    const replayedCallback = await fetch(
+      `${appBaseUrl}${providerRedirect.pathname}${providerRedirect.search}`,
+      { redirect: "manual" },
+    );
+    assert.equal(replayedCallback.status, 303);
+    assert.match(
+      replayedCallback.headers.get("location") ?? "",
+      /recovery=invalid$/,
+    );
+    assert.equal(fakeSupabaseState.pkceGrantCalls, 2);
+    assert.ok(
+      getCookieHeaders(replayedCallback).every(
+        (cookie) =>
+          !cookie.startsWith("directsign_password_reset_pending=") ||
+          /Max-Age=0/i.test(cookie),
+      ),
+    );
+    const cookieHeader = pendingCookie.split(";", 1)[0];
+    const requestBody = JSON.stringify({
+      password: "ChangedPassword!123",
+      password_confirm: "ChangedPassword!123",
+    });
+    const [first, replay] = await Promise.all([
+      fetch(`${appBaseUrl}/api/auth/password-reset/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookieHeader },
+        body: requestBody,
+      }),
+      fetch(`${appBaseUrl}/api/auth/password-reset/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookieHeader },
+        body: requestBody,
+      }),
+    ]);
+    assert.deepEqual([first.status, replay.status].sort(), [200, 401]);
+    assert.equal(fakeSupabaseState.pkceGrantCalls, 2);
+    assert.equal(fakeSupabaseState.authUserCalls, 2);
+    assert.equal(fakeSupabaseState.passwordUpdateCalls, 1);
   });
 
   it("marks the dedicated Vercel login entrypoint private and cookie-varying", async () => {

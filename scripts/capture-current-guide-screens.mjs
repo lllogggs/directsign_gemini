@@ -226,7 +226,9 @@ async function login(page) {
 
 async function waitForFonts(page) {
   await page.evaluate(async () => {
-    if (document.fonts?.ready) await document.fonts.ready;
+    if (globalThis.document.fonts?.ready) {
+      await globalThis.document.fonts.ready;
+    }
   });
   await wait(500);
 }

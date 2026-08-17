@@ -3,6 +3,7 @@ import { Navigate, useLocation, useNavigate } from "react-router";
 import {
   AlertTriangle,
   ArrowUpRight,
+  BarChart3,
   Bell,
   CheckCircle2,
   Clock3,
@@ -48,6 +49,17 @@ type AdminMetrics = {
   support_tickets?: {
     open_count: number;
     total_count: number;
+  };
+  site_page_views: {
+    available: boolean;
+    today: number;
+    last_7_days: number;
+    by_page: Array<{
+      page_key: string;
+      label: string;
+      today: number;
+      last_7_days: number;
+    }>;
   };
   source: "supabase" | "file";
   demo_mode: boolean;
@@ -172,6 +184,12 @@ const emptyMetrics: AdminMetrics = {
     open_count: 0,
     total_count: 0,
   },
+  site_page_views: {
+    available: false,
+    today: 0,
+    last_7_days: 0,
+    by_page: [],
+  },
   source: "file",
   demo_mode: false,
 };
@@ -185,6 +203,13 @@ export function SystemAdminDashboard({
 } = {}) {
   const navigate = useNavigate();
   const location = useLocation();
+  const requestedSection = new URLSearchParams(location.search).get("section");
+  const initialAdminSection: AdminDashboardSection =
+    requestedSection === "support_tickets" ||
+    requestedSection === "support_access" ||
+    requestedSection === "manual_verification"
+      ? requestedSection
+      : "overview";
   const adminFallbackPath = mobileOnly ? "/admin/mobile" : "/admin";
   const requestedNextPath = getNextPath(location.search, adminFallbackPath, ["/admin"]);
   const nextPath = requestedNextPath.startsWith("/admin/login")
@@ -221,7 +246,7 @@ export function SystemAdminDashboard({
     OperationalSupportTicket["status"] | "active" | "all"
   >("active");
   const [activeSection, setActiveSection] =
-    useState<AdminDashboardSection>("overview");
+    useState<AdminDashboardSection>(initialAdminSection);
   const [verificationReviewTab, setVerificationReviewTab] =
     useState<VerificationReviewTab>("pending");
 
@@ -876,6 +901,7 @@ export function SystemAdminDashboard({
         onClearError={() => setDataError("")}
         onCloseSupportAccess={closeSupportAccess}
         onLogout={handleLogout}
+        onOpenAnalytics={() => navigate("/admin/analytics")}
         onOpenContract={(contractId) =>
           navigate(`/advertiser/contract/${encodeURIComponent(contractId)}`)
         }
@@ -911,6 +937,16 @@ export function SystemAdminDashboard({
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigate("/admin/analytics")}
+              aria-label="분석센터"
+              title="분석센터"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-400 sm:w-auto sm:px-3"
+            >
+              <BarChart3 className="h-4 w-4" />
+              <span className="hidden whitespace-nowrap sm:inline">분석센터</span>
+            </button>
             <button
               type="button"
               onClick={loadAdminData}
@@ -1005,6 +1041,43 @@ export function SystemAdminDashboard({
                   <EmptyState text="아직 집계할 계약이 없습니다." />
                 )}
               </div>
+
+              <div className="mt-6 border-t border-neutral-100 pt-5">
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <h3 className="text-[15px] font-semibold tracking-[-0.01em]">
+                      공개 페이지 조회수
+                    </h3>
+                    <p className="mt-1 text-xs font-medium text-neutral-500">
+                      오늘 {metrics.site_page_views.today.toLocaleString("ko-KR")} · 최근 7일 {metrics.site_page_views.last_7_days.toLocaleString("ko-KR")}
+                    </p>
+                  </div>
+                  <span className="text-xs font-medium text-neutral-400">
+                    자체 서버 집계
+                  </span>
+                </div>
+                {metrics.site_page_views.available && metrics.site_page_views.by_page.length > 0 ? (
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {metrics.site_page_views.by_page.map((page) => (
+                      <div
+                        key={page.page_key}
+                        className="flex items-center justify-between gap-3 rounded-lg border border-neutral-100 bg-neutral-50/70 px-3 py-2.5"
+                      >
+                        <span className="min-w-0 truncate text-[13px] font-semibold text-neutral-700">
+                          {page.label}
+                        </span>
+                        <span className="shrink-0 text-xs font-medium text-neutral-500">
+                          오늘 {page.today.toLocaleString("ko-KR")} · 7일 {page.last_7_days.toLocaleString("ko-KR")}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-3">
+                    <EmptyState text="공개 페이지 조회수 집계가 아직 준비되지 않았습니다." />
+                  </div>
+                )}
+              </div>
             </section>
           )}
 
@@ -1092,6 +1165,7 @@ function MobileAdminOperations({
   onClearError,
   onCloseSupportAccess,
   onLogout,
+  onOpenAnalytics,
   onOpenContract,
   onOpenSupportAccess,
   onRefresh,
@@ -1117,6 +1191,7 @@ function MobileAdminOperations({
   onClearError: () => void;
   onCloseSupportAccess: (id: string) => void;
   onLogout: () => void;
+  onOpenAnalytics: () => void;
   onOpenContract: (contractId: string) => void;
   onOpenSupportAccess: (request: SupportAccessRequest) => void;
   onRefresh: () => void;
@@ -1204,6 +1279,15 @@ function MobileAdminOperations({
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={onOpenAnalytics}
+              aria-label="분석센터"
+              title="분석센터"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-700 transition hover:border-neutral-400"
+            >
+              <BarChart3 className="h-4 w-4" />
+            </button>
             <button
               type="button"
               onClick={onRefresh}

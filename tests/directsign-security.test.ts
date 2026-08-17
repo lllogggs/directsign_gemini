@@ -636,8 +636,9 @@ describe("yeollock.me security regressions", () => {
     assert.match(analytics, /win\.clarity\?\.\("stop"\)/);
     assert.match(
       analytics,
-      /export const isMicrosoftClarityCollectionEnabled = \(\) => false/,
+      /export const isMicrosoftClarityCollectionEnabled = \(\) => true/,
     );
+    assert.match(analytics, /publicCampaignPathPattern/);
     assert.match(analytics, /removeAnalyticsScripts/);
     assert.match(analytics, /expireFirstPartyAnalyticsCookies/);
     assert.doesNotMatch(clarityPathAllowlist, /"\/contract\//);
@@ -648,7 +649,8 @@ describe("yeollock.me security regressions", () => {
       server,
       /script-src 'self' https:\/\/\*\.googletagmanager\.com/,
     );
-    assert.doesNotMatch(server, /clarity\.ms|c\.bing\.com/);
+    assert.match(server, /https:\/\/\*\.clarity\.ms/);
+    assert.match(server, /https:\/\/c\.bing\.com/);
     assert.match(
       server,
       /img-src 'self' data: blob: https:\/\/\*\.supabase\.co/,
@@ -666,6 +668,7 @@ describe("yeollock.me security regressions", () => {
     assert.match(privacy, /Google Analytics · G-PDTVNFRD1W/);
     assert.match(privacy, /Microsoft Clarity · wx0bvf6bl5/);
     assert.match(privacy, /현재 전송 중지/);
+    assert.match(privacy, /현재 활성화/);
     assert.match(privacy, /공유 토큰/);
     assert.match(privacy, /분석을 허용하기 전에는 스크립트를 불러오지 않/);
   });
@@ -702,7 +705,7 @@ describe("yeollock.me security regressions", () => {
     );
     assert.match(publicBucketGuard, /bucket\.public === true/);
     assert.match(publicBucketGuard, /fileSizeLimit === maxMarketplaceImageSize/);
-    assert.match(publicBucketGuard, /marketplaceImageMimeTypes/);
+    assert.match(publicBucketGuard, /marketplaceStoredImageMimeTypes/);
     assert.match(
       publicBucketGuard,
       /Supabase public storage bucket security policy mismatch/,
@@ -1809,6 +1812,12 @@ describe("yeollock.me security regressions", () => {
     const minimalProfileMigration = read(
       "supabase/migrations/20260807180000_publish_minimal_influencer_profiles.sql",
     );
+    const serverDiscoveryMigration = read(
+      "supabase/migrations/20260811200000_add_server_marketplace_influencer_discovery.sql",
+    );
+    const serverDiscoveryCleanup = read(
+      "supabase/migrations/20260811201000_remove_authenticated_marketplace_influencer_discovery.sql",
+    );
     const discoveryRoute = server.slice(
       server.indexOf('app.get("/api/marketplace/influencers"'),
       server.indexOf('app.get("/api/advertiser/saved-influencers"'),
@@ -1938,10 +1947,9 @@ describe("yeollock.me security regressions", () => {
 
     assert.match(discoveryRoute, /requireAdvertiserSession\(request, response\)/);
     assert.match(discoveryRoute, /readAuthenticatedMarketplaceInfluencerPage/);
-    assert.match(discoveryRoute, /accessToken: advertiserAuth\.accessToken/);
     assert.match(
       discoveryRoute,
-      /AuthenticatedInfluencerDirectoryAccessError[\s\S]+hasActiveAdvertiserOrganizationMembership\(\{[\s\S]+profileId: advertiserAuth\.profile\.id[\s\S]+organizationId: organization\.id[\s\S]+readIndexedMarketplaceInfluencerPage\(\{[\s\S]+organizationId: organization\.id/,
+      /actorUserId: advertiserAuth\.user\.id[\s\S]+actorProfileId: advertiserAuth\.profile\.id[\s\S]+organizationId: organization\.id/,
     );
     assert.doesNotMatch(
       discoveryRoute,
@@ -1949,19 +1957,7 @@ describe("yeollock.me security regressions", () => {
     );
     assert.match(
       server,
-      /rpcResponse\.status === 403[\s\S]+\.clone\(\)[\s\S]+accessError\.code === "42501"[\s\S]+accessError\.message === "authenticated production advertiser profile required"/,
-    );
-    assert.match(
-      server,
-      /const confirmedAt = auth\.user\.email_confirmed_at \?\? auth\.user\.confirmed_at;[\s\S]+await syncProfileEmailVerifiedAt\(auth\.user\);[\s\S]+email_verified_at: confirmedAt/,
-    );
-    assert.match(
-      server,
-      /const hasActiveAdvertiserOrganizationMembership =[\s\S]+role=in\.\(owner,admin,marketer\)[\s\S]+organization_type=eq\.advertiser&deleted_at=is\.null[\s\S]+memberships\.length > 0 && organizations\.length > 0/,
-    );
-    assert.match(
-      server,
-      /rpcResponse\.status === 403[\s\S]+\.clone\(\)[\s\S]+accessError\.code === "42501"[\s\S]+accessError\.message === "authenticated production advertiser profile required"/,
+      /failure\.status === 403 && failure\.sqlState === "42501"[\s\S]+AuthenticatedInfluencerDirectoryAccessError/,
     );
     assert.match(
       server,
@@ -1969,13 +1965,24 @@ describe("yeollock.me security regressions", () => {
     );
     assert.match(discoveryRoute, /Cache-Control", "private, no-store/);
     assert.doesNotMatch(discoveryRoute, /sendPublicMarketplaceJson/);
-    const authenticatedRestHelper = server.slice(
-      server.indexOf("const fetchSupabaseAsUser"),
-      server.indexOf("const assertSupabaseOk"),
+    assert.doesNotMatch(server, /const fetchSupabaseAsUser/);
+    assert.match(server, /rpc\/list_server_marketplace_influencers/);
+    assert.match(
+      server,
+      /operation: "marketplace_influencer_directory"[\s\S]+correlation_id: correlationId[\s\S]+upstream_status: failureStatus[\s\S]+sqlstate: sqlState[\s\S]+duration_ms:/,
     );
-    assert.match(authenticatedRestHelper, /supabaseAuthHeaders\(accessToken\)/);
-    assert.match(authenticatedRestHelper, /cache: "no-store"/);
-    assert.match(server, /rpc\/list_authenticated_marketplace_influencers/);
+    assert.match(
+      serverDiscoveryMigration,
+      /auth\.role\(\) is distinct from 'service_role'[\s\S]+p_actor_user_id is distinct from p_actor_profile_id[\s\S]+directsign_is_operational_profile[\s\S]+membership\.role::text in \('owner', 'admin', 'marketer'\)/,
+    );
+    assert.match(
+      serverDiscoveryMigration,
+      /revoke all on function public\.list_server_marketplace_influencers\([\s\S]+from public, anon, authenticated;[\s\S]+grant execute on function public\.list_server_marketplace_influencers\([\s\S]+to service_role/,
+    );
+    assert.match(
+      serverDiscoveryCleanup,
+      /revoke all on function public\.list_authenticated_marketplace_influencers\([\s\S]+from public, anon, authenticated, service_role;[\s\S]+drop function public\.list_authenticated_marketplace_influencers/,
+    );
     assert.match(server, /readRegisteredMarketplaceInfluencerByStableHandle/);
     assert.match(server, /readAdvertiserVisibleMarketplaceInfluencerByHandle/);
     assert.match(server, /rpc\/mutate_marketplace_saved_influencer/);
@@ -2821,7 +2828,7 @@ describe("yeollock.me security regressions", () => {
       /if \(!useSupabase\) return fallbackMarketplaceBrandProfiles\(\)/,
     );
     assert.match(server, /readAuthenticatedMarketplaceInfluencerPage/);
-    assert.match(server, /rpc\/list_authenticated_marketplace_influencers/);
+    assert.match(server, /rpc\/list_server_marketplace_influencers/);
     assert.match(
       server,
       /readPublicMarketplaceInfluencerProfileByHandle\(\s*request\.params\.handle/,
@@ -3049,8 +3056,9 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /profile\?\.role !== "admin"/);
     assert.match(
       adminRegistrationSource,
-      /\?on_conflict=admin_session_id|\?on_conflict=auth_session_id/,
+      /register_directsign_admin_operator_session/,
     );
+    assert.match(adminRegistrationSource, /p_auth_session_id: claims\.session_id/);
     assert.match(adminUi, /type AdminAuthStep = "credentials" \| "totp"/);
     assert.match(adminUi, /qr_code\?: string/);
     assert.match(adminUi, /enrollment_required\?: boolean/);
@@ -3361,14 +3369,29 @@ describe("yeollock.me security regressions", () => {
 
   it("fails closed when Supabase support access audit events cannot be stored", () => {
     const server = read("server/index.ts");
+    const migration = read(
+      "supabase/migrations/20260811198000_atomic_support_access_transitions.sql",
+    );
+    const atomicityTest = read("tests/support-access-atomicity.test.ts");
 
     assert.match(server, /createMissingSupportAccessEventStoreError/);
-    assert.match(server, /ensureSupportAccessEventStoreAvailable/);
     assert.match(
       server,
       /if \(!allowLocalSupportAccessStore\) \{\s*throw createMissingSupportAccessEventStoreError\(\);/s,
     );
-    assert.match(server, /await ensureSupportAccessEventStoreAvailable\(\);/);
+    assert.match(server, /createSupportAccessGrantAtomically/);
+    assert.match(server, /readSupportAccessAtomicReconciliation/);
+    assert.match(migration, /create_support_access_grant_atomically/);
+    assert.match(
+      migration,
+      /insert into public\.support_access_requests[\s\S]+insert into public\.support_access_events/,
+    );
+    assert.match(
+      migration,
+      /revoke insert, update on public\.support_access_requests from service_role/,
+    );
+    assert.match(atomicityTest, /INJECTED_SUPPORT_ACCESS_EVENT_FAILURE/);
+    assert.match(atomicityTest, /from public\.support_access_requests where id=\$1/);
   });
 
   it("surfaces support access audit events and records revocations explicitly", () => {
@@ -3376,11 +3399,18 @@ describe("yeollock.me security regressions", () => {
     const migration = read(
       "supabase/migrations/20260507224346_allow_revoked_support_access_event.sql",
     );
+    const atomicMigration = read(
+      "supabase/migrations/20260811198000_atomic_support_access_transitions.sql",
+    );
 
     assert.match(server, /interface SupportAccessAuditEvent[\s\S]+"revoked"/);
     assert.match(server, /const attachSupportAccessEvents = async/);
     assert.match(server, /support_access_events/);
-    assert.match(server, /action: status === "closed" \? "closed" : "revoked"/);
+    assert.match(server, /transitionSupportAccessStatusAtomically/);
+    assert.match(atomicMigration, /p_target_status not in \('closed', 'revoked'\)/);
+    assert.match(atomicMigration, /v_request\.status::text = p_target_status/);
+    assert.match(atomicMigration, /insert into public\.support_access_events/);
+    assert.match(atomicMigration, /p_target_status,[\s\S]+\s+'admin',/);
     assert.match(migration, /'revoked'/);
   });
 
@@ -3392,6 +3422,9 @@ describe("yeollock.me security regressions", () => {
     );
     const influencerViewer = read("src/pages/influencer/ContractViewer.tsx");
     const userMessages = read("src/domain/userMessages.ts");
+    const migration = read(
+      "supabase/migrations/20260811198000_atomic_support_access_transitions.sql",
+    );
     const routeStart = server.indexOf(
       'app.post("/api/contracts/:id/support-access-requests"',
     );
@@ -3407,7 +3440,12 @@ describe("yeollock.me security regressions", () => {
     );
     assert.match(route, /request\.body\?\.support_consent_accepted !== true/);
     assert.match(route, /Support access consent is required/);
-    assert.match(route, /supportAccessConsentText/);
+    assert.match(route, /createSupportAccessGrantAtomically/);
+    assert.match(server, /p_consent_version: SUPPORT_ACCESS_CONSENT_VERSION/);
+    assert.match(migration, /add column if not exists consent_version text/);
+    assert.match(migration, /add column if not exists consent_accepted_at timestamptz/);
+    assert.match(migration, /directsign-support-access-consent-v1/);
+    assert.match(migration, /v_now \+ interval '24 hours'/);
     assert.match(advertiserViewer, /SUPPORT_ACCESS_CONSENT_TEXT/);
     assert.match(influencerViewer, /SUPPORT_ACCESS_CONSENT_TEXT/);
     assert.match(
@@ -3445,8 +3483,8 @@ describe("yeollock.me security regressions", () => {
   it("does not present share links as complete before server sync settles", () => {
     const builder = read("src/pages/marketing/ContractBuilder.tsx");
 
-    assert.match(builder, /공유 링크 저장 중/);
-    assert.match(builder, /공유 링크 확인 필요/);
+    assert.match(builder, /서명 링크 저장 중/);
+    assert.match(builder, /서명 링크 확인 필요/);
     assert.match(
       builder,
       /disabled=\{[\s\S]{0,180}result\.stale \|\|[\s\S]{0,80}isSyncing \|\|[\s\S]{0,80}Boolean\(syncError\)/,
@@ -3494,7 +3532,7 @@ describe("yeollock.me security regressions", () => {
     );
     const fastProtectionSource = fastAuth.slice(
       fastProtectionStart,
-      fastAuth.indexOf("async function readProfileByEmail", fastProtectionStart),
+      fastAuth.indexOf("async function readProfileByUserId", fastProtectionStart),
     );
 
     assert.doesNotMatch(normalizeSource, /createShareToken\(/);
@@ -3686,7 +3724,9 @@ describe("yeollock.me security regressions", () => {
     assert.notEqual(signedPdfBuilderStart, -1);
     assert.notEqual(signedPdfBuilderEnd, -1);
     assert.match(reviewPdfRoute, /buildContractReviewPdf/);
-    assert.match(reviewPdfRoute, /Content-Type", "application\/pdf"/);
+    assert.match(reviewPdfRoute, /setPrivateDownloadHeaders/);
+    assert.match(reviewPdfRoute, /contentType: "application\/pdf"/);
+    assert.match(reviewPdfRoute, /streamPrivateDownloadBuffer/);
     assert.match(contractDocumentPdfBuilder, /광고 계약서/);
     assert.match(contractDocumentPdfBuilder, /제1조 계약 당사자/);
     assert.match(contractDocumentPdfBuilder, /제3조 플랫폼 및 콘텐츠/);
@@ -3724,8 +3764,31 @@ describe("yeollock.me security regressions", () => {
     );
   });
 
+  it("fails closed for non-UUID contract mutation paths in production", () => {
+    const server = read("server/index.ts");
+    const guard = server.slice(
+      server.indexOf("const requireAuthoritativeContractMutationId"),
+      server.indexOf("const toDateOnly"),
+    );
+
+    assert.match(guard, /!useSupabase \|\| isUuid\(contractId\)/);
+    assert.match(guard, /CONTRACT_AUTHORITATIVE_RECORD_REQUIRED/);
+    assert.match(guard, /response\.status\(409\)/);
+    assert.equal(
+      (
+        server.match(
+          /requireAuthoritativeContractMutationId\(response, request\.params\.id\)/g,
+        ) ?? []
+      ).length,
+      11,
+    );
+  });
+
   it("keeps signed content deliverables behind authenticated server APIs", () => {
     const server = read("server/index.ts");
+    const atomicMutationMigration = read(
+      "supabase/migrations/20260811194000_atomic_deliverable_mutations.sql",
+    );
     const getRouteStart = server.indexOf(
       'app.get("/api/contracts/:id/deliverables"',
     );
@@ -3747,11 +3810,35 @@ describe("yeollock.me security regressions", () => {
     assert.notEqual(patchRouteStart, -1);
     assert.match(getRoute, /allowShareToken:\s*false/);
     assert.match(postRoute, /requireInfluencerSession/);
-    assert.match(postRoute, /storeDeliverableFile/);
-    assert.match(postRoute, /contract_files/);
+    assert.match(postRoute, /readPrivateFileUploadTicket/);
+    assert.match(postRoute, /readAndVerifyPrivateUploadObject/);
+    assert.match(postRoute, /uploadTicketId/);
+    assert.doesNotMatch(postRoute, /storeDeliverableFile\(/);
+    assert.match(postRoute, /finalizeDeliverableSubmissionAtomically/);
     assert.match(patchRoute, /requireAdvertiserSession/);
-    assert.match(patchRoute, /updateContractDeliverableWorkflow/);
-    assert.match(server, /status:\s*"completed"/);
+    assert.match(patchRoute, /finalizeDeliverableReviewAtomically/);
+    assert.match(
+      atomicMutationMigration,
+      /create or replace function public\.finalize_directsign_deliverable_submission/,
+    );
+    assert.match(atomicMutationMigration, /insert into public\.contract_files/);
+    assert.match(
+      atomicMutationMigration,
+      /create or replace function public\.finalize_directsign_deliverable_review/,
+    );
+    assert.match(
+      atomicMutationMigration,
+      /revoke all on function public\.finalize_directsign_deliverable_submission/,
+    );
+    const uploadTicketMigration = read(
+      "supabase/migrations/20260811202000_private_file_upload_tickets.sql",
+    );
+    assert.match(
+      uploadTicketMigration,
+      /create or replace function public\.finalize_directsign_deliverable_submission_from_ticket/,
+    );
+    assert.match(server, /writeExistingContractWithCas/);
+    assert.match(server, /mapContractToV2Status/);
   });
 
   it("counts orphan deliverable submissions against single matching requirements", () => {
@@ -3771,7 +3858,7 @@ describe("yeollock.me security regressions", () => {
     assert.match(counter, /Math\.min\(quantity, matchingCount\)/);
   });
 
-  it("requires support PDF scope before support operators can download deliverable files", () => {
+  it("keeps deliverable evidence outside support contract-and-PDF consent", () => {
     const server = read("server/index.ts");
     const routeStart = server.indexOf(
       '"/api/contracts/:id/deliverables/:deliverableId/files/:fileId"',
@@ -3784,9 +3871,10 @@ describe("yeollock.me security regressions", () => {
 
     assert.notEqual(routeStart, -1);
     assert.notEqual(routeEnd, -1);
-    assert.match(route, /does not include private file access/);
+    assert.match(route, /if \(access\.role === "admin"\)/);
+    assert.match(route, /운영 지원 열람에는 제출 콘텐츠 파일이 포함되지 않습니다/);
     assert.match(route, /deliverable_file_downloaded/);
-    assert.match(route, /viewed_pdf/);
+    assert.doesNotMatch(route, /appendSupportAccessAuditEvent|viewed_pdf/);
   });
 
   it("locks the post-sign content workflow behind review and close gates", () => {
@@ -3831,10 +3919,23 @@ describe("yeollock.me security regressions", () => {
 
   it("audits evidence and signed PDF downloads on the server", () => {
     const server = read("server/index.ts");
+    const evidenceMigration = read(
+      "supabase/migrations/20260808170000_minimize_platform_verification_provider_evidence.sql",
+    );
 
     assert.match(server, /appendVerificationEvidenceAccessAudit/);
-    assert.match(server, /evidence_access_audit/);
-    assert.match(server, /Cache-Control", "no-store"/);
+    assert.match(server, /record_verification_evidence_access/);
+    assert.match(server, /get_verification_legacy_evidence_file/);
+    assert.match(server, /streamPrivateDownloadBuffer/);
+    assert.match(server, /setPrivateDownloadHeaders/);
+    assert.match(
+      evidenceMigration,
+      /create table if not exists directsign_private\.verification_evidence_access_events/,
+    );
+    assert.match(
+      evidenceMigration,
+      /create or replace function public\.record_verification_evidence_access/,
+    );
     assert.match(server, /signed_pdf_downloaded/);
   });
 
@@ -4870,7 +4971,7 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /first_contract_on_yeollock/);
     assert.match(
       server,
-      /Advertiser trust metadata cannot be changed by influencer/,
+      /Influencer contract changes must use a dedicated server endpoint/,
     );
     assert.match(viewer, /BusinessVerificationBadge/);
     assert.match(viewer, /사업자 인증 완료/);
@@ -4945,21 +5046,27 @@ describe("yeollock.me security regressions", () => {
     const server = read("server/index.ts");
 
     assert.match(server, /const signupTermsVersion = "2026-06-02"/);
-    assert.match(server, /const signupPrivacyPolicyVersion = "2026-08-11\.2"/);
+    assert.match(server, /const signupPrivacyPolicyVersion = "2026-08-13\.1"/);
     assert.match(signupPage, /const TERMS_DOCUMENT_VERSION = "2026-06-02"/);
     assert.match(
       signupPage,
-      /const PRIVACY_POLICY_DOCUMENT_VERSION = "2026-08-11\.2"/,
+      /const PRIVACY_POLICY_DOCUMENT_VERSION = "2026-08-13\.1"/,
     );
     assert.match(signupPage, /LEGAL_CONTACT_EMAIL/);
     assert.match(signupPage, /동의 일시와 문서 버전이 저장됩니다/);
+    assert.match(signupPage, /서비스 분석 동의 \(선택\)/);
+    assert.match(
+      signupPage,
+      /setAnalyticsConsent\(analyticsConsent \? "granted" : "denied"\)/,
+    );
+    assert.match(signupPage, /function SignupAnalyticsConsent/);
     assert.match(signupPage, /현재 가입과 기본 서비스 이용은 무료입니다/);
     assert.match(
       signupPage,
       /향후 일부 또는 전체\s+기능이 유료로 전환될 수 있으며/,
     );
-    assert.match(legalPage, /effectiveDate: "2026-08-11"/);
-    assert.match(legalPage, /documentVersion: "2026-08-11\.2"/);
+    assert.match(legalPage, /effectiveDate: "2026-08-13"/);
+    assert.match(legalPage, /documentVersion: "2026-08-13\.1"/);
     assert.match(
       legalPage,
       /향후 일부 또는 전체 기능이 유료로 전환될 수 있으며/,
@@ -5150,7 +5257,7 @@ describe("yeollock.me security regressions", () => {
     );
     assert.match(
       influencerRouteSource,
-      /catch \(error\) \{\s+if \(isInstagramDmMethod\)/,
+      /catch \(error\) \{\s+const evidenceReconciliation[\s\S]+reconcileStoredVerificationEvidence[\s\S]+if \(isInstagramDmMethod\)/,
     );
     assert.match(influencerRouteSource, /ownership_challenge_code_hash/);
     assert.match(influencerRouteSource, /ownership_challenge_code_ciphertext/);
@@ -5319,7 +5426,7 @@ describe("yeollock.me security regressions", () => {
     );
     assert.match(
       server,
-      /isInstagramDmTerminalReview \? "&status=eq\.pending"/,
+      /verification_requests[\s\S]+\?id=eq\.\$\{encodeURIComponent\(id\)\}&status=eq\.pending&updated_at=eq\.\$\{encodeURIComponent\([\s\S]+existingRecord\.updated_at/,
     );
     assert.match(
       lifecycleMigration,
@@ -5375,10 +5482,11 @@ describe("yeollock.me security regressions", () => {
       routeSource.indexOf('outcome: "evidence_required"') <
         routeSource.indexOf("insertVerificationRequest"),
     );
-    assert.match(
-      routeSource,
-      /!autoApprove && evidenceFile[\s\S]+storeEvidenceFile/,
-    );
+    assert.match(routeSource, /readPrivateFileUploadTicket/);
+    assert.match(routeSource, /readAndVerifyPrivateUploadObject/);
+    assert.match(routeSource, /insertVerificationRequestFromUploadTicket/);
+    assert.match(routeSource, /Inline verification evidence is no longer accepted/);
+    assert.doesNotMatch(routeSource, /storeEvidenceFile\(/);
 
     for (const label of ["사업자등록번호", "대표자명", "개업일자"]) {
       assert.match(advertiserVerification, new RegExp(`label="${label}"`));
@@ -6177,7 +6285,7 @@ describe("yeollock.me security regressions", () => {
     assert.match(seedAccounts, /const applicantNames = \[\.\.\.new Set/);
     assert.match(seedAccounts, /seeded_campaign_applications/);
     assert.match(server, /maxItems = 20/);
-    assert.match(server, /normalizeBrandCampaigns\(activeCampaigns, 20\)/);
+    assert.match(server, /transitionMarketplaceCampaignStatusAtomically/);
     assert.doesNotMatch(seedAccounts, /applicantLimit: "1명"/);
     assert.ok(
       (
@@ -6197,7 +6305,7 @@ describe("yeollock.me security regressions", () => {
       /hidden min-w-0 truncate whitespace-nowrap text-\[12px\] font-semibold text-\[#303630\] lg:block/,
     );
     assert.match(landing, /광고계약/);
-    assert.match(landing, /흩어진 광고 계약/);
+    assert.match(landing, /흩어진[\s\S]{0,120}광고 계약/);
     assert.match(landing, /광고비 미지급/);
     assert.match(landing, /마감일 착오/);
     assert.match(landing, /콘텐츠 기준 변경/);
@@ -6253,6 +6361,9 @@ describe("yeollock.me security regressions", () => {
     const migration = read(
       "supabase/migrations/20260711043000_normalize_marketplace_campaigns.sql",
     );
+    const statusMigration = read(
+      "supabase/migrations/20260811197000_atomic_campaign_status_transitions.sql",
+    );
 
     assert.match(
       migration,
@@ -6265,8 +6376,12 @@ describe("yeollock.me security regressions", () => {
     );
     assert.match(migration, /to service_role/);
     assert.match(server, /hydrateBrandRowsWithNormalizedCampaigns/);
-    assert.match(server, /upsertNormalizedMarketplaceCampaign/);
-    assert.match(server, /active_campaigns: campaigns/);
+    assert.match(server, /transitionMarketplaceCampaignStatusAtomically/);
+    assert.match(server, /publish_marketplace_campaign_cas/);
+    assert.match(
+      statusMigration,
+      /update public\.marketplace_brand_profiles[\s\S]*active_campaigns = v_mirror/,
+    );
   });
 
   it("enforces progressive campaign verification at the atomic server and database boundary", () => {
@@ -6582,7 +6697,7 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /Vercel-CDN-Cache-Control/);
     assert.match(server, /Vercel-Cache-Tag/);
     assert.match(server, /readAuthenticatedMarketplaceInfluencerPage/);
-    assert.match(server, /rpc\/list_authenticated_marketplace_influencers/);
+    assert.match(server, /rpc\/list_server_marketplace_influencers/);
     assert.match(
       server,
       /sendPublicMarketplaceJson\(response, \{ campaigns \}, "marketplace-campaigns"\)/,
@@ -6598,7 +6713,10 @@ describe("yeollock.me security regressions", () => {
       const routeIndex = server.indexOf(route);
       assert.notEqual(routeIndex, -1, `${route} route must exist`);
       const routeSlice = server.slice(routeIndex, routeIndex + 4500);
-      assert.match(routeSlice, /Cache-Control", "no-store"/);
+      assert.match(
+        routeSlice,
+        /Cache-Control", "(?:private, )?no-store"|setPrivateAuthResponseHeaders|setPrivateDownloadHeaders/,
+      );
       assert.doesNotMatch(routeSlice, /sendPublicMarketplaceJson/);
       assert.doesNotMatch(routeSlice, /writePublicMarketplaceRuntimeCache/);
     }
@@ -6996,9 +7114,13 @@ describe("yeollock.me security regressions", () => {
       routeSource,
       /response\.status\(404\)\.json\(\{ error: "Contract not found" \}\)/,
     );
-    assert.match(
+    assert.doesNotMatch(
       routeSource,
       /normalizeTestContractDatesForSession\(access\.auth, contract\)/,
+    );
+    assert.match(
+      routeSource,
+      /createContractDocumentHash\([\s\S]+responseContract,[\s\S]+signatureConsentVersion/,
     );
     assert.match(
       routeSource,

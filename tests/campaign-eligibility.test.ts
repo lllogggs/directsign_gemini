@@ -452,7 +452,7 @@ test("campaign eligibility and the private Naver cache are enforced in Postgres"
         verificationRequestId,
         "production",
         "creator",
-        "2026-08-11.2",
+        "2026-08-13.1",
         checkedAt,
       ],
     );

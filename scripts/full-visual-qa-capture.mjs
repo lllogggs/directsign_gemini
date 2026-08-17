@@ -558,7 +558,7 @@ async function runForViewport(browser, viewport, resolvedPublicPages) {
         dynamicPublicPages.push({
           id: "share-contract-active",
           label: "공유 계약 링크",
-          path: `/contract/${contractSamples.active.id}?token=${encodeURIComponent(
+          path: `/contract/${contractSamples.active.id}#token=${encodeURIComponent(
             contractSamples.active.token,
           )}`,
         });

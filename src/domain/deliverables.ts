@@ -264,14 +264,3 @@ export const getDeliverableErrorMessage = (
 
   return message;
 };
-
-export const readFileAsDataUrl = (file: File) =>
-  new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () =>
-      typeof reader.result === "string"
-        ? resolve(reader.result)
-        : reject(new Error("File could not be read"));
-    reader.onerror = () => reject(reader.error ?? new Error("File could not be read"));
-    reader.readAsDataURL(file);
-  });

@@ -1010,6 +1010,7 @@ function AdvertiserMarketplaceHeaderActions() {
 }
 
 export function AdvertiserInfluencerDiscoveryPage() {
+  const navigate = useNavigate();
   const [currentPage, setCurrentPage] = useState(1);
   const [query, setQuery] = useState("");
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
@@ -1019,8 +1020,6 @@ export function AdvertiserInfluencerDiscoveryPage() {
   const [influencerSort, setInfluencerSort] =
     useState<InfluencerSortValue>("audience_desc");
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [selectedProfile, setSelectedProfile] =
-    useState<MarketplaceInfluencerProfile | null>(null);
   const [previewProfile, setPreviewProfile] = useState<{
     profile: MarketplaceInfluencerProfile;
     top: number;
@@ -1189,7 +1188,7 @@ export function AdvertiserInfluencerDiscoveryPage() {
       role="advertiser"
       eyebrow="광고주 탐색"
       title="인플루언서 찾기"
-      description="프로필과 채널 규모를 보고 바로 컨택합니다."
+      description="프로필과 채널 규모를 확인하고 메시지센터에서 1:1 계약 제안을 보냅니다."
       backHref="/advertiser/dashboard"
       backLabel="1:1 계약 대시보드"
       brandCount={brands.length}
@@ -1277,7 +1276,11 @@ export function AdvertiserInfluencerDiscoveryPage() {
             loadError={influencerLoadError}
             onRetry={retryInfluencers}
             onPageChange={handlePageChange}
-            onContact={setSelectedProfile}
+            onContact={(profile) =>
+              navigate(
+                `/advertiser/messages?compose=${encodeURIComponent(profile.handle)}`,
+              )
+            }
             savedHandles={savedHandles}
             savingHandles={savingHandles}
             isInterestReady={savedInfluencersReady}
@@ -1297,13 +1300,6 @@ export function AdvertiserInfluencerDiscoveryPage() {
         </>
       )}
 
-      {selectedProfile ? (
-        <InfluencerContactDialog
-          key={selectedProfile.id}
-          profile={selectedProfile}
-          onClose={() => setSelectedProfile(null)}
-        />
-      ) : null}
       {savedInfluencerError ? (
         <div
           role="alert"
@@ -1324,8 +1320,6 @@ export function InfluencerBrandDiscoveryPage() {
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [openFilterList, setOpenFilterList] = useState<string | null>(null);
-  const [selectedBrand, setSelectedBrand] =
-    useState<MarketplaceBrandProfile | null>(null);
   const publicProfilePath = useInfluencerPublicProfilePath();
   const {
     brands,
@@ -1378,7 +1372,7 @@ export function InfluencerBrandDiscoveryPage() {
       role="influencer"
       eyebrow="인플루언서 탐색"
       title="브랜드 찾기"
-      description="브랜드 정보를 확인하고 바로 역제안합니다."
+      description="브랜드 정보를 확인하고 메시지센터에서 1:1 계약 제안을 보냅니다."
       backHref="/influencer/dashboard"
       backLabel="1:1 계약"
       brandCount={displayBrands.length}
@@ -1459,19 +1453,16 @@ export function InfluencerBrandDiscoveryPage() {
             <BrandDiscoveryCard
               key={brand.id}
               brand={brand}
-              onContact={() => setSelectedBrand(brand)}
+              onContact={() =>
+                navigate(
+                  `/influencer/messages?compose=${encodeURIComponent(brand.handle)}`,
+                )
+              }
             />
           ))}
         </section>
       )}
 
-      {selectedBrand ? (
-        <BrandContactDialog
-          key={selectedBrand.id}
-          brand={selectedBrand}
-          onClose={() => setSelectedBrand(null)}
-        />
-      ) : null}
     </MarketplaceShell>
   );
 }
@@ -1700,7 +1691,7 @@ function PublicProfileHeader({
 
 export function PublicInfluencerProfilePage() {
   const { profileHandle } = useParams<{ profileHandle: string }>();
-  const [showContact, setShowContact] = useState(false);
+  const navigate = useNavigate();
   const [failedProfileAvatarUrl, setFailedProfileAvatarUrl] = useState<string | null>(
     null,
   );
@@ -1912,7 +1903,11 @@ export function PublicInfluencerProfilePage() {
         ) : showPrimaryProfileAction ? (
           <button
             type="button"
-            onClick={() => setShowContact(true)}
+            onClick={() =>
+              navigate(
+                `/advertiser/messages?compose=${encodeURIComponent(profile.handle)}`,
+              )
+            }
             className={`${desktop ? "h-12 w-[156px]" : "h-12 min-w-0 flex-1"} ${primaryProfileActionClassName}`}
             aria-label={`${profile.displayName}에게 1:1 계약 제안`}
             title="1:1 계약 제안"
@@ -2057,16 +2052,6 @@ export function PublicInfluencerProfilePage() {
         </article>
       </section>
 
-      {showContact &&
-      !isOwnPublishedProfile &&
-      !isDiscoveredProfile &&
-      profileVerified ? (
-        <InfluencerContactDialog
-          key={profile.id}
-          profile={profile}
-          onClose={() => setShowContact(false)}
-        />
-      ) : null}
       {profileInterestError && showProfileInterestAction ? (
         <div
           role="alert"
@@ -2081,7 +2066,7 @@ export function PublicInfluencerProfilePage() {
 
 export function PublicBrandProfilePage() {
   const { brandHandle } = useParams<{ brandHandle: string }>();
-  const [showContact, setShowContact] = useState(false);
+  const navigate = useNavigate();
   const influencerShellMode = useMarketplaceShellMode("influencer");
   const publicBrandHeader: PublicProfileHeaderConfig = {
     authenticatedRole: "influencer",
@@ -2191,11 +2176,15 @@ export function PublicBrandProfilePage() {
                   <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                     <button
                       type="button"
-                      onClick={() => setShowContact(true)}
+                      onClick={() =>
+                        navigate(
+                          `/influencer/messages?compose=${encodeURIComponent(brand.handle)}`,
+                        )
+                      }
                       className="inline-flex h-10 items-center justify-center gap-2 rounded-[10px] bg-blue-600 px-4 text-[13px] font-extrabold text-white shadow-[0_14px_30px_rgba(37,99,235,0.18)] transition hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700"
                     >
                       <Handshake className="h-4 w-4" />
-                      브랜드에 역제안하기
+                      브랜드에 1:1 계약 제안
                     </button>
                   </div>
                 </div>
@@ -2279,13 +2268,6 @@ export function PublicBrandProfilePage() {
         </section>
       </div>
 
-      {showContact ? (
-        <BrandContactDialog
-          key={brand.id}
-          brand={brand}
-          onClose={() => setShowContact(false)}
-        />
-      ) : null}
     </main>
   );
 }
@@ -3261,13 +3243,15 @@ function BrandDiscoveryCard({
   );
 }
 
-function InfluencerContactDialog({
+export function InfluencerContactDialog({
   profile,
   onClose,
+  onSubmitted,
 }: {
   key?: string;
   profile: MarketplaceInfluencerProfile;
   onClose: () => void;
+  onSubmitted?: () => void | Promise<void>;
 }) {
   const [initialDraft] = useState(() =>
     readContactDraft({
@@ -3340,7 +3324,7 @@ function InfluencerContactDialog({
 
       if (response.status === 401) {
         persistDraft();
-        setError("광고주 로그인 후 1:1 계약 제안을 저장할 수 있습니다.");
+        setError("광고주 로그인 후 1:1 계약 제안을 보낼 수 있습니다.");
         return;
       }
       if (
@@ -3360,19 +3344,21 @@ function InfluencerContactDialog({
       }
       if (response.status === 403) {
         persistDraft();
-        setError("광고주 로그인 후 1:1 계약 제안을 저장할 수 있습니다.");
+        setError("광고주 로그인 후 1:1 계약 제안을 보낼 수 있습니다.");
         return;
       }
       if (!response.ok) {
-        setError(data.error ?? "1:1 계약 제안을 저장하지 못했습니다. 다시 시도해 주세요.");
+        setError(data.error ?? "1:1 계약 제안을 보내지 못했습니다. 다시 시도해 주세요.");
         return;
       }
 
       clearContactDraft("advertiser", profile.handle);
       setDraftRestored(false);
       setSubmitted(true);
+      clearMarketplaceMessageSummaryCache("advertiser");
+      void onSubmitted?.();
     } catch {
-      setError("1:1 계약 제안을 저장하지 못했습니다. 네트워크 연결을 확인하고 다시 시도해 주세요.");
+      setError("1:1 계약 제안을 보내지 못했습니다. 네트워크 연결을 확인하고 다시 시도해 주세요.");
     } finally {
       setIsSubmitting(false);
     }
@@ -3385,10 +3371,10 @@ function InfluencerContactDialog({
     >
       {submitted ? (
         <ProposalSubmitted
-          title="1:1 계약 제안이 저장됐습니다"
-          body="브랜드 소개와 계약 조건이 메시지함에 저장됐습니다."
+          title="1:1 계약 제안을 보냈습니다"
+          body="인플루언서에게 제안이 전달됐습니다. 이후 상태는 메시지센터에서 확인할 수 있습니다."
           actionHref="/advertiser/messages"
-          actionLabel="메시지함 보기"
+          actionLabel="메시지센터 보기"
           onClose={handleClose}
         />
       ) : (
@@ -3488,7 +3474,7 @@ function InfluencerContactDialog({
             className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-[14px] font-semibold text-white shadow-[0_14px_30px_rgba(37,99,235,0.18)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:shadow-none"
           >
             <Send className="h-4 w-4" />
-            {isSubmitting ? "저장 중" : "1:1 계약 제안 저장"}
+            {isSubmitting ? "전송 중" : "1:1 계약 제안 보내기"}
           </button>
         </form>
       )}
@@ -3496,13 +3482,15 @@ function InfluencerContactDialog({
   );
 }
 
-function BrandContactDialog({
+export function BrandContactDialog({
   brand,
   onClose,
+  onSubmitted,
 }: {
   key?: string;
   brand: MarketplaceBrandProfile;
   onClose: () => void;
+  onSubmitted?: () => void | Promise<void>;
 }) {
   const [initialDraft] = useState(() =>
     readContactDraft({
@@ -3566,33 +3554,35 @@ function BrandContactDialog({
 
       if (response.status === 401 || response.status === 403) {
         persistDraft();
-        setError("인플루언서 로그인 후 역제안을 저장할 수 있습니다.");
+        setError("인플루언서 로그인 후 1:1 계약 제안을 보낼 수 있습니다.");
         return;
       }
       if (!response.ok) {
         const data = (await response.json().catch(() => ({}))) as { error?: string };
-        setError(data.error ?? "역제안을 저장하지 못했습니다. 다시 시도해 주세요.");
+        setError(data.error ?? "1:1 계약 제안을 보내지 못했습니다. 다시 시도해 주세요.");
         return;
       }
 
       clearContactDraft("influencer", brand.handle);
       setDraftRestored(false);
       setSubmitted(true);
+      clearMarketplaceMessageSummaryCache("influencer");
+      void onSubmitted?.();
     } catch {
-      setError("역제안을 저장하지 못했습니다. 네트워크 연결을 확인하고 다시 시도해 주세요.");
+      setError("1:1 계약 제안을 보내지 못했습니다. 네트워크 연결을 확인하고 다시 시도해 주세요.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <DialogFrame title={`${brand.displayName}에 제안`} onClose={handleClose}>
+    <DialogFrame title={`${brand.displayName}에 1:1 계약 제안`} onClose={handleClose}>
       {submitted ? (
         <ProposalSubmitted
-          title="역제안이 저장됐습니다"
-          body="내 채널 소개와 광고 형태가 저장됐습니다. 이후 상태는 메시지함에서 확인할 수 있습니다."
+          title="1:1 계약 제안을 보냈습니다"
+          body="브랜드에 제안이 전달됐습니다. 이후 상태는 메시지센터에서 확인할 수 있습니다."
           actionHref="/influencer/messages"
-          actionLabel="메시지함 보기"
+          actionLabel="메시지센터 보기"
           onClose={handleClose}
         />
       ) : (
@@ -3687,7 +3677,7 @@ function BrandContactDialog({
             className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-[14px] font-semibold text-white shadow-[0_14px_30px_rgba(37,99,235,0.18)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:shadow-none"
           >
             <Send className="h-4 w-4" />
-            {isSubmitting ? "저장 중" : "역제안 저장"}
+            {isSubmitting ? "전송 중" : "1:1 계약 제안 보내기"}
           </button>
         </form>
       )}

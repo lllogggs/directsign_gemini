@@ -384,16 +384,28 @@ export function ContractAdminViewer() {
   const isContractAccessLoading =
     contractAccessState.contractId !== contract.id ||
     contractAccessState.status === "loading";
+  const canFinalizeLegacyPendingDirectContract =
+    !isFixedCampaign &&
+    contract.status === "REVIEWING" &&
+    contract.clauses.length > 0 &&
+    contract.clauses.every(
+      (clause) =>
+        clause.status === "PENDING_REVIEW" &&
+        !clause.history.some((entry) => entry.role === "influencer"),
+    );
+  const canConfirmAllContractTerms =
+    !summary.allApproved &&
+    (isFixedCampaign || canFinalizeLegacyPendingDirectContract);
 
   const primaryActionLabel =
     contract.status === "CLOSED"
       ? "계약 마감"
       : contract.status === "SIGNED"
       ? "서명 완료"
+      : canConfirmAllContractTerms
+        ? "계약서 확정"
       : summary.activeShare
         ? "계약서 링크 복사"
-      : isFixedCampaign && !summary.allApproved
-        ? "내용 확인"
       : summary.allApproved
         ? !isContractAccessReady
           ? isContractAccessFailed
@@ -595,6 +607,52 @@ export function ContractAdminViewer() {
   };
 
   const handlePrimaryAction = () => {
+    if (canConfirmAllContractTerms) {
+      const now = new Date().toISOString();
+      const nextClauses = contract.clauses.map((clause) => ({
+        ...clause,
+        status: "APPROVED" as const,
+      }));
+
+      updateContract(contract.id, {
+        ...(canFinalizeLegacyPendingDirectContract
+          ? { status: "APPROVED" as const }
+          : {}),
+        clauses: nextClauses,
+        workflow: isFixedCampaign
+          ? {
+              next_actor: "advertiser",
+              next_action: "서명 링크를 만들어 인플루언서에게 전달하세요.",
+              due_at: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+              risk_level: "medium",
+              last_message: "선정자별 계약서가 확정되었습니다.",
+            }
+          : {
+              next_actor: "influencer",
+              next_action: "계약서 PDF를 확인하고 서명해 주세요.",
+              due_at: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+              risk_level: "medium",
+              last_message: "최종 계약서와 서명 링크가 준비되었습니다.",
+            },
+        audit_events: [
+          ...(contract.audit_events ?? []),
+          {
+            id: `audit_${Date.now()}`,
+            actor: "advertiser",
+            action: "contract_terms_finalized",
+            description: "광고주가 최종 계약서를 확정했습니다.",
+            created_at: now,
+          },
+        ],
+      });
+      setNotice(
+        isFixedCampaign
+          ? "선정자별 계약서를 확정했습니다. 이제 서명 링크를 만들어 주세요."
+          : "최종 계약서를 확정했습니다.",
+      );
+      return;
+    }
+
     if (summary.activeShare && !isContractSignedOrClosed) {
       void copyLink();
       return;
@@ -622,37 +680,6 @@ export function ContractAdminViewer() {
 
       setNotice("사업자 인증 화면에서 승인 절차를 먼저 완료해 주세요.");
       navigate(advertiserContractAccess.next_path);
-      return;
-    }
-
-    if (isFixedCampaign && !summary.allApproved) {
-      const now = new Date().toISOString();
-      const nextClauses = contract.clauses.map((clause) => ({
-        ...clause,
-        status: "APPROVED" as const,
-      }));
-
-      updateContract(contract.id, {
-        clauses: nextClauses,
-        workflow: {
-          next_actor: "advertiser",
-          next_action: "계약 내용을 확인했습니다. 서명 링크를 만드세요.",
-          due_at: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
-          risk_level: "low",
-          last_message: "계약 내용을 확인했습니다.",
-        },
-        audit_events: [
-          ...(contract.audit_events ?? []),
-          {
-            id: `audit_${Date.now()}`,
-            actor: "advertiser",
-            action: "campaign_terms_locked",
-            description: "광고주가 계약 내용을 확인했습니다.",
-            created_at: now,
-          },
-        ],
-      });
-      setNotice("계약 내용을 확인했습니다. 이제 서명 링크를 만들 수 있습니다.");
       return;
     }
 
@@ -1831,6 +1858,7 @@ function AdvertiserDeliverablesPanel({
                             <Textarea
                               className="min-h-[76px] rounded-md border-neutral-200 bg-white text-[13px] shadow-none focus-visible:ring-1 focus-visible:ring-neutral-900"
                               placeholder="수정 요청이나 반려 사유를 적어 주세요."
+                              maxLength={2000}
                               value={reviewComments[submission.id] ?? ""}
                               onChange={(event) =>
                                 onCommentChange(submission.id, event.target.value)

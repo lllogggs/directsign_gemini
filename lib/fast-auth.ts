@@ -312,8 +312,11 @@ async function createSupabasePasswordSession(email: string, password: string) {
   return (await response.json()) as SupabaseAuthSession;
 }
 
-async function revokeSupabaseSession(accessToken: string) {
-  const response = await fetch(supabaseAuthUrl("/logout?scope=local"), {
+async function revokeSupabaseSession(
+  accessToken: string,
+  scope: "local" | "global" = "local",
+) {
+  const response = await fetch(supabaseAuthUrl(`/logout?scope=${scope}`), {
     method: "POST",
     headers: supabaseHeaders(accessToken),
   });
@@ -324,8 +327,93 @@ async function revokeSupabaseSession(accessToken: string) {
   }
 }
 
+interface PrivacyErasureStatus {
+  found?: boolean;
+  status?: string | null;
+}
+
+async function readPrivacyErasureStatus(authUserId: string) {
+  const response = await fetch(
+    supabaseRestUrl("rpc/get_privacy_erasure_status"),
+    {
+      method: "POST",
+      headers: supabaseHeaders(),
+      body: JSON.stringify({
+        p_request_id: null,
+        p_auth_user_id: authUserId,
+      }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      `Privacy erasure status failed (${response.status}): ${await parseSupabaseError(
+        response,
+      )}`,
+    );
+  }
+  return (await response.json()) as PrivacyErasureStatus;
+}
+
 const hasText = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0;
+
+type FastSessionAuthorityResult = {
+  active?: boolean;
+  reason?: string;
+};
+
+class FastSessionAuthorityUnavailableError extends Error {
+  constructor(cause?: unknown) {
+    super(
+      "Authoritative session verification is temporarily unavailable",
+      cause === undefined ? undefined : { cause },
+    );
+    this.name = "FastSessionAuthorityUnavailableError";
+  }
+}
+
+function readSessionIdentity(session: SupabaseAuthSession) {
+  const [, payload] = session.access_token.split(".");
+  if (!payload) return undefined;
+  try {
+    const claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
+      sub?: string;
+      session_id?: string;
+    };
+    if (claims.sub !== session.user.id || !hasText(claims.session_id)) return undefined;
+    return { userId: claims.sub, authSessionId: claims.session_id };
+  } catch {
+    return undefined;
+  }
+}
+
+async function verifyFastSessionAuthority(session: SupabaseAuthSession) {
+  const identity = readSessionIdentity(session);
+  if (!identity) return false;
+  try {
+    const response = await fetch(
+      supabaseRestUrl("rpc/verify_directsign_auth_session"),
+      {
+        method: "POST",
+        headers: supabaseHeaders(),
+        body: JSON.stringify({
+          p_user_id: identity.userId,
+          p_auth_session_id: identity.authSessionId,
+        }),
+        signal: AbortSignal.timeout(distributedRateLimitTimeoutMs),
+      },
+    );
+    if (!response.ok) throw new Error(`Session verification failed (${response.status})`);
+    const result = (await response.json()) as FastSessionAuthorityResult;
+    if (result.reason === "reset_in_progress") {
+      throw new FastSessionAuthorityUnavailableError();
+    }
+    return result.active === true && result.reason === "active";
+  } catch (error) {
+    if (error instanceof FastSessionAuthorityUnavailableError) throw error;
+    throw new FastSessionAuthorityUnavailableError(error);
+  }
+}
 
 const normalizeEmail = (value: unknown) =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -550,6 +638,7 @@ async function terminateRoleSession(
   response: ResponseLike,
   role: UserSessionBrowserRole,
   session: SupabaseAuthSession,
+  revokeScope: "local" | "global" = "local",
 ) {
   const cookiePrefix =
     role === "advertiser" ? "directsign_advertiser" : "directsign_influencer";
@@ -566,7 +655,7 @@ async function terminateRoleSession(
     `${resumeCookieName}=; ${cookieOptions(0)}`,
   ]);
   try {
-    await revokeSupabaseSession(session.access_token);
+    await revokeSupabaseSession(session.access_token, revokeScope);
   } catch (error) {
     console.warn(
       `[yeollock fast auth] ${role} authorization termination revoke failed: ${
@@ -574,6 +663,46 @@ async function terminateRoleSession(
       }`,
     );
   }
+}
+
+async function rejectBlockedPrivacyErasureLogin(
+  response: ResponseLike,
+  role: UserSessionBrowserRole,
+  session: SupabaseAuthSession,
+) {
+  let erasure: PrivacyErasureStatus;
+  try {
+    erasure = await readPrivacyErasureStatus(session.user.id);
+  } catch {
+    // The password-grant session has not been committed to browser cookies yet.
+    // Revoke only that provider session: clearing role cookies here would also
+    // destroy the customer's pre-existing rolling session on this device.
+    try {
+      await revokeSupabaseSession(session.access_token, "local");
+    } catch (error) {
+      console.warn(
+        `[yeollock fast auth] ${role} uncommitted session revoke failed: ${
+          error instanceof Error ? error.message : "unknown error"
+        }`,
+      );
+    }
+    sendJson(response, 503, {
+      code: "ACCOUNT_ERASURE_STATUS_UNAVAILABLE",
+      error: "계정 삭제 상태를 확인할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+      retryable: true,
+    });
+    return true;
+  }
+
+  if (erasure.found === true && erasure.status !== "cancelled") {
+    await terminateRoleSession(response, role, session, "global");
+    sendJson(response, 410, {
+      code: "ACCOUNT_ERASURE_PENDING",
+      error: "계정 삭제가 진행 중이어서 로그인할 수 없습니다.",
+    });
+    return true;
+  }
+  return false;
 }
 
 function fastSessionHmac(payload: string) {
@@ -752,15 +881,6 @@ function protectContractForClient(contract: ContractRecord) {
   };
 }
 
-async function readProfileByEmail(email: string) {
-  const rows = await readSupabaseRows<SupabaseProfileRow>(
-    "profiles",
-    `?select=${profileSelectFields}&email=eq.${encodeURIComponent(email)}&limit=1`,
-    "profile by email",
-  );
-  return rows[0];
-}
-
 async function readProfileByUserId(userId: string) {
   const rows = await readSupabaseRows<SupabaseProfileRow>(
     "profiles",
@@ -925,10 +1045,6 @@ function buildInfluencerVerification(profile: SupabaseProfileRow) {
   };
 }
 
-function sameUser(profile: SupabaseProfileRow | undefined, user: SupabaseAuthUser) {
-  return profile?.id === user.id;
-}
-
 async function handleAdvertiserLogin(request: RequestLike, response: ResponseLike) {
   const body = await readBody(request);
   const email = normalizeEmail(body.email);
@@ -957,58 +1073,29 @@ async function handleAdvertiserLogin(request: RequestLike, response: ResponseLik
     sendJson(response, 429, { error: "로그인 시도가 많습니다. 잠시 후 다시 시도해 주세요." });
     return;
   }
-  const profilePromise = readProfileByEmail(email).catch(() => undefined);
-  const organizationPromise = profilePromise.then((profile) =>
-    profile?.role === "marketer" ? readDefaultOrganization(profile.id) : undefined,
-  );
-  const verificationRequestsPromise = profilePromise
-    .then((profile) =>
-      profile?.role === "marketer"
-        ? readAdvertiserVerificationRequests(profile)
-        : undefined,
-    )
-    .catch(() => undefined);
-  const contractsPromise = profilePromise
-    .then((profile) =>
-      profile?.role === "marketer"
-        ? readAdvertiserContracts(profile)
-        : undefined,
-    )
-    .catch(() => undefined);
-  const verificationPromise = Promise.all([
-    profilePromise,
-    organizationPromise,
-    verificationRequestsPromise,
-  ])
-    .then(([profile, organization, requests]) =>
-      profile?.role === "marketer" && requests
-        ? buildAdvertiserVerification(profile, organization, requests)
-        : undefined,
-    )
-    .catch(() => undefined);
-  const dashboardPromise = Promise.all([
-    profilePromise,
-    contractsPromise,
-    verificationPromise,
-  ])
-    .then(([profile, contracts, verification]) => {
-      if (profile?.role !== "marketer" || !contracts || !verification) {
-        return undefined;
-      }
-      return {
-        contracts,
-        verification,
-        source: "supabase",
-        allow_local_merge: false,
-        demo_mode: false,
-      };
-    })
-    .catch(() => undefined);
   const session = await createSupabasePasswordSession(email, password);
-  const profileByEmail = await profilePromise;
-  const profile = sameUser(profileByEmail, session.user)
-    ? profileByEmail
-    : await readProfileByUserId(session.user.id);
+  try {
+    if (!(await verifyFastSessionAuthority(session))) {
+      await revokeSupabaseSession(session.access_token).catch(() => undefined);
+      sendJson(response, 401, { error: "로그인 세션을 다시 확인해 주세요." });
+      return;
+    }
+  } catch (error) {
+    await revokeSupabaseSession(session.access_token).catch(() => undefined);
+    if (error instanceof FastSessionAuthorityUnavailableError) {
+      response.setHeader("Retry-After", "1");
+      sendJson(response, 503, {
+        error: "Authentication is temporarily unavailable. Try again.",
+        retryable: true,
+      });
+      return;
+    }
+    throw error;
+  }
+  if (await rejectBlockedPrivacyErasureLogin(response, "advertiser", session)) {
+    return;
+  }
+  const profile = await readProfileByUserId(session.user.id);
   if (profile) {
     request.authMetricDataOrigin = classifyAuthMetricDataOrigin({
       identifier: profile.email,
@@ -1020,20 +1107,14 @@ async function handleAdvertiserLogin(request: RequestLike, response: ResponseLik
     sendJson(response, 403, { error: "광고주 계정 권한이 필요합니다." });
     return;
   }
-  const [organization, prefetchedDashboard] = sameUser(profileByEmail, session.user)
-    ? await Promise.all([organizationPromise, dashboardPromise])
-    : [undefined, undefined];
-  const resolvedOrganization = organization ?? (await readDefaultOrganization(profile.id));
-  const dashboard = prefetchedDashboard ?? {
-    ...(
-      await Promise.all([
-        readAdvertiserContracts(profile),
-        readAdvertiserVerification(profile, resolvedOrganization),
-      ]).then(([contracts, verification]) => ({
-        contracts,
-        verification,
-      }))
-    ),
+  const resolvedOrganization = await readDefaultOrganization(profile.id);
+  const [contracts, verification] = await Promise.all([
+    readAdvertiserContracts(profile),
+    readAdvertiserVerification(profile, resolvedOrganization),
+  ]);
+  const dashboard = {
+    contracts,
+    verification,
     source: "supabase",
     allow_local_merge: false,
     demo_mode: false,
@@ -1075,12 +1156,29 @@ async function handleInfluencerLogin(request: RequestLike, response: ResponseLik
     sendJson(response, 429, { error: "로그인 시도가 많습니다. 잠시 후 다시 시도해 주세요." });
     return;
   }
-  const profilePromise = readProfileByEmail(email).catch(() => undefined);
   const session = await createSupabasePasswordSession(email, password);
-  const profileByEmail = await profilePromise;
-  const profile = sameUser(profileByEmail, session.user)
-    ? profileByEmail
-    : await readProfileByUserId(session.user.id);
+  try {
+    if (!(await verifyFastSessionAuthority(session))) {
+      await revokeSupabaseSession(session.access_token).catch(() => undefined);
+      sendJson(response, 401, { error: "로그인 세션을 다시 확인해 주세요." });
+      return;
+    }
+  } catch (error) {
+    await revokeSupabaseSession(session.access_token).catch(() => undefined);
+    if (error instanceof FastSessionAuthorityUnavailableError) {
+      response.setHeader("Retry-After", "1");
+      sendJson(response, 503, {
+        error: "Authentication is temporarily unavailable. Try again.",
+        retryable: true,
+      });
+      return;
+    }
+    throw error;
+  }
+  if (await rejectBlockedPrivacyErasureLogin(response, "influencer", session)) {
+    return;
+  }
+  const profile = await readProfileByUserId(session.user.id);
   if (profile) {
     request.authMetricDataOrigin = classifyAuthMetricDataOrigin({
       identifier: profile.email,

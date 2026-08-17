@@ -14,7 +14,6 @@ import {
 import {
   CAMPAIGN_OG_LAYOUT_VERSION,
   CAMPAIGN_TITLE_MAX_GRAPHEMES,
-  CAMPAIGN_TITLE_MAX_UNBROKEN_GRAPHEMES,
   countCampaignTitleGraphemes,
   getCampaignOgImagePath,
   getCampaignOgImageVersion,
@@ -86,8 +85,9 @@ test("campaign titles use one normalized 40-grapheme rule and fixed OG font tier
   );
   assert.equal(
     getCampaignTitleValidationError("가".repeat(21)),
-    `긴 단어는 ${CAMPAIGN_TITLE_MAX_UNBROKEN_GRAPHEMES}자 안에서 띄어쓰기를 추가해 주세요.`,
+    undefined,
   );
+  assert.equal(getCampaignTitleValidationError("가".repeat(40)), undefined);
   assert.deepEqual(
     [16, 17, 24, 25, 32, 33, 40].map((length) =>
       getCampaignTitleFontSize("가".repeat(length)),
@@ -416,7 +416,7 @@ test("campaign cards, details, previews and advertiser editing share one present
   assert.match(dashboard, />\s*캠페인 수정\s*<\/Link>/);
 });
 
-test("both campaign application paths bind the viewed revision and bypass stale caches", async () => {
+test("both campaign application paths bind the viewed revision without public cache bypasses", async () => {
   const campaignPages = await readFile(
     new URL("../src/pages/marketplace/CampaignPages.tsx", import.meta.url),
     "utf8",
@@ -434,8 +434,8 @@ test("both campaign application paths bind the viewed revision and bypass stale 
     ).length,
     2,
   );
-  assert.equal((campaignPages.match(/\?fresh=\$\{Date\.now\(\)\}/g) ?? []).length, 2);
-  assert.equal((campaignPages.match(/cache: "no-store" as const/g) ?? []).length, 2);
+  assert.doesNotMatch(campaignPages, /[?&]fresh=/);
+  assert.equal((campaignPages.match(/cache: "no-store" as const/g) ?? []).length, 0);
   assert.match(campaignPages, /필요한 동의에 다시 동의한 뒤 신청해 주세요/);
 });
 

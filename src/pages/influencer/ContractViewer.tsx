@@ -18,7 +18,6 @@ import { useVerificationSummary } from "../../hooks/useVerificationSummary";
 import { buildLoginRedirect } from "../../domain/navigation";
 import { waitForFastLoginTransition } from "../../domain/fastLoginTransition";
 import {
-  getVerificationRejectionGuidance,
   type InfluencerPlatform,
   verificationStatusLabel,
 } from "../../domain/verification";
@@ -28,7 +27,6 @@ import {
   getDeliverableErrorMessage,
   getSubmissionNote,
   isDeliverableRevisionStatus,
-  readFileAsDataUrl,
   reviewStatusLabel,
   reviewStatusTone,
   submittedReviewStatuses,
@@ -36,6 +34,18 @@ import {
   validateDeliverableUrl,
   type DeliverablesResponse,
 } from "../../domain/deliverables";
+import {
+  getPrivateFileSelectionKey,
+  isPrivateFileUploadTicketUsable,
+  preparePrivateFileDescriptor,
+  requestPrivateFileUploadTicket,
+  shouldDiscardPrivateFileUploadTicket,
+  shouldRetryPrivateFileUpload,
+  uploadPrivateFileWithTicket,
+  PrivateFileTransferError,
+  type PendingPrivateFileTransfer,
+  type PrivateFileUploadProgress,
+} from "../../domain/privateFileUpload";
 import {
   formatContractTitleForDisplay,
   formatMoneyLabel,
@@ -72,7 +82,6 @@ import {
   LifeBuoy,
   Link2,
   RefreshCw,
-  ShieldCheck,
   Upload,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -89,6 +98,10 @@ const STATUS_LABELS: Record<ContractStatus, string> = {
   APPROVED: "서명 준비",
   SIGNED: "서명 완료",
   CLOSED: "계약 마감",
+};
+
+type DeliverableSubmissionProgress = PrivateFileUploadProgress | {
+  phase: "finalizing";
 };
 
 const getStatusLabel = (status: ContractStatus) =>
@@ -415,8 +428,9 @@ export function ContractViewer() {
   } = useVerificationSummary({ role: "influencer", enabled: Boolean(contract) });
 
   const [showSignModal, setShowSignModal] = useState(false);
-  const contractDocumentReviewKey = contract
-    ? `${contract.id}:${contract.updated_at}`
+  const [contractDocumentHash, setContractDocumentHash] = useState("");
+  const contractDocumentReviewKey = contract && contractDocumentHash
+    ? `${contract.id}:${contractDocumentHash}`
     : "";
   const [revealedContractDocumentKey, setRevealedContractDocumentKey] =
     useState("");
@@ -431,12 +445,26 @@ export function ContractViewer() {
   const [signatureMode, setSignatureMode] = useState<"draw" | "typed">("draw");
   const [isSignLoading, setIsSignLoading] = useState(false);
   const [signerName, setSignerName] = useState("");
+  const [serverSignerDisplayName, setServerSignerDisplayName] = useState("");
   const [consentAccepted, setConsentAccepted] = useState(false);
   const [signError, setSignError] = useState("");
   const [signNotice, setSignNotice] = useState("");
-  const shareToken = searchParams.get("token") ?? "";
+  const [contractVersionNotice, setContractVersionNotice] = useState("");
+  const [initialShareToken] = useState(() => {
+    if (typeof window === "undefined") return "";
+    const fragmentToken =
+      new URLSearchParams(window.location.hash.replace(/^#/, "")).get(
+        "token",
+      ) ?? "";
+    // Previously issued links used a query token. Consume it once in memory,
+    // scrub it immediately below, and never propagate it to another URL.
+    const legacyQueryToken =
+      new URLSearchParams(window.location.search).get("token") ?? "";
+    return fragmentToken || legacyQueryToken;
+  });
+  const pendingShareTokenRef = useRef(initialShareToken);
   const supportAccessRequestId = searchParams.get("support") ?? "";
-  const accessVerificationKey = `${id ?? ""}:${shareToken}:${supportAccessRequestId}`;
+  const accessVerificationKey = `${id ?? ""}:${supportAccessRequestId}`;
   const hasRevealedContractDocument =
     Boolean(contractDocumentReviewKey) &&
     revealedContractDocumentKey === contractDocumentReviewKey;
@@ -463,13 +491,21 @@ export function ContractViewer() {
     Record<string, { url: string; note: string; file?: File }>
   >({});
   const [submittingDeliverableId, setSubmittingDeliverableId] = useState("");
-  const [postLinkDraft, setPostLinkDraft] = useState<{
-    contractId: string;
-    value: string;
-  }>();
-  const [postLinkError, setPostLinkError] = useState("");
-  const [postLinkNotice, setPostLinkNotice] = useState("");
-  const [isSubmittingPostLink, setIsSubmittingPostLink] = useState(false);
+  const [deliverableSubmissionProgress, setDeliverableSubmissionProgress] =
+    useState<
+      (DeliverableSubmissionProgress & { requirementId: string }) | undefined
+    >();
+  const [retryDeliverableId, setRetryDeliverableId] = useState("");
+  const deliverableSubmissionKeysRef = useRef<
+    Record<
+      string,
+      {
+        fingerprint: string;
+        key: string;
+        transfer?: PendingPrivateFileTransfer;
+      }
+    >
+  >({});
   const [currentTime, setCurrentTime] = useState(() => Date.now());
 
   const handleContractDocumentReviewComplete = useCallback(() => {
@@ -575,6 +611,10 @@ export function ContractViewer() {
       setSignError("전자서명 동의 확인이 필요합니다.");
       return;
     }
+    if (!contractDocumentHash) {
+      setSignError("서명할 계약서를 다시 확인해 주세요.");
+      return;
+    }
 
     setSignError("");
     setSignNotice("");
@@ -599,22 +639,37 @@ export function ContractViewer() {
           credentials: "include",
           headers: {
             "Content-Type": "application/json",
-            "X-Yeollock-Share-Token": shareToken,
           },
           body: JSON.stringify({
             signature_data: dataUrl,
             signer_name: signerName.trim(),
             consent_accepted: consentAccepted,
+            expected_document_hash: contractDocumentHash,
           }),
         },
       );
 
       const result = (await response.json()) as {
         contract?: typeof contract;
+        code?: string;
         error?: string;
       };
 
       if (!response.ok || !result.contract) {
+        if (
+          result.code === "CONTRACT_VERSION_CHANGED" ||
+          result.code === "SIGNER_IDENTITY_CHANGED"
+        ) {
+          setShowSignModal(false);
+          setRevealedContractDocumentKey("");
+          setReviewedContractDocumentKey("");
+          setVerifiedAccessKey("");
+          setContractVersionNotice(
+            result.code === "SIGNER_IDENTITY_CHANGED"
+              ? "서명자 정보가 변경되어 최신 계정 정보를 다시 확인합니다."
+              : "계약 내용이 변경되어 다시 확인이 필요합니다.",
+          );
+        }
         throw new Error(getSignatureErrorMessage(result.error));
       }
 
@@ -731,18 +786,117 @@ export function ContractViewer() {
     if (!confirmed) return;
 
     setSubmittingDeliverableId(requirementId);
+    setRetryDeliverableId("");
     setDeliverablesError("");
     setDeliverablesNotice("");
 
     try {
-      const evidenceFile = form.file
-        ? {
-            name: form.file.name,
-            type: form.file.type,
-            size: form.file.size,
-            data_url: await readFileAsDataUrl(form.file),
+      const submissionFingerprint = JSON.stringify({
+        requirementId,
+        url,
+        note,
+        file: form.file
+          ? [form.file.name, form.file.type, form.file.size, form.file.lastModified]
+          : null,
+      });
+      const previousSubmission = deliverableSubmissionKeysRef.current[requirementId];
+      const submissionId =
+        previousSubmission?.fingerprint === submissionFingerprint
+          ? previousSubmission.key
+          : crypto.randomUUID();
+      const pendingSubmission = {
+        fingerprint: submissionFingerprint,
+        key: submissionId,
+        transfer:
+          previousSubmission?.fingerprint === submissionFingerprint
+            ? previousSubmission.transfer
+            : undefined,
+      };
+      deliverableSubmissionKeysRef.current[requirementId] = pendingSubmission;
+
+      let uploadTicketId: string | undefined;
+      if (form.file) {
+        const selectionKey = getPrivateFileSelectionKey(
+          form.file,
+          form.file.type,
+          submissionFingerprint,
+        );
+        let transfer = pendingSubmission.transfer;
+        const canReuseTransfer =
+          transfer?.selectionKey === selectionKey &&
+          isPrivateFileUploadTicketUsable(transfer.ticket, "finalize") &&
+          (transfer.uploadState !== "pending" ||
+            isPrivateFileUploadTicketUsable(transfer.ticket, "initiation"));
+
+        if (!transfer || !canReuseTransfer) {
+          const descriptor = await preparePrivateFileDescriptor(
+            form.file,
+            form.file.type,
+            (progress) =>
+              setDeliverableSubmissionProgress({
+                requirementId,
+                ...progress,
+              }),
+          );
+          setDeliverableSubmissionProgress({
+            requirementId,
+            phase: "ticketing",
+          });
+          const ticket = await requestPrivateFileUploadTicket({
+            endpoint: `/api/contracts/${encodeURIComponent(
+              contract.id,
+            )}/deliverables/upload-ticket`,
+            descriptor,
+            expectedArea: "deliverables",
+            context: {
+              submission_id: submissionId,
+              requirement_id: requirementId,
+            },
+          });
+          transfer = {
+            selectionKey,
+            descriptor,
+            ticket,
+            uploadState: "pending",
+          };
+          pendingSubmission.transfer = transfer;
+        }
+
+        if (transfer.uploadState === "pending") {
+          try {
+            await uploadPrivateFileWithTicket({
+              file: form.file,
+              descriptor: transfer.descriptor,
+              ticket: transfer.ticket,
+              tusUploadUrl: transfer.tusUploadUrl,
+              onTusUploadUrl: (tusUploadUrl) => {
+                transfer.tusUploadUrl = tusUploadUrl;
+              },
+              onProgress: (progress) =>
+                setDeliverableSubmissionProgress({
+                  requirementId,
+                  ...progress,
+                }),
+            });
+            transfer.uploadState = "uploaded";
+          } catch (uploadError) {
+            if (
+              uploadError instanceof PrivateFileTransferError &&
+              uploadError.code === "UPLOAD_TICKET_EXPIRED"
+            ) {
+              pendingSubmission.transfer = undefined;
+              throw uploadError;
+            }
+            transfer.uploadState = "uncertain";
           }
-        : undefined;
+        }
+        uploadTicketId = transfer.ticket.ticket_id;
+      }
+
+      setDeliverableSubmissionProgress({
+        requirementId,
+        phase: "finalizing",
+      });
       const response = await apiFetch(
         `/api/contracts/${encodeURIComponent(contract.id)}/deliverables`,
         {
@@ -753,16 +907,29 @@ export function ContractViewer() {
             Accept: "application/json",
           },
           body: JSON.stringify({
+            submission_id: submissionId,
             requirement_id: requirementId,
             url: url || undefined,
             note: note || undefined,
-            evidence_file: evidenceFile,
+            upload_ticket_id: uploadTicketId,
           }),
         },
       );
-      const data = (await response.json()) as DeliverablesResponse;
+      const data = (await response.json()) as DeliverablesResponse & {
+        code?: string;
+        deliverable_id?: string;
+        reconciled?: boolean;
+      };
 
       if (!response.ok) {
+        if (pendingSubmission.transfer) {
+          if (shouldRetryPrivateFileUpload(data.code)) {
+            pendingSubmission.transfer.uploadState = "pending";
+          }
+          if (shouldDiscardPrivateFileUploadTicket(response.status, data.code)) {
+            pendingSubmission.transfer = undefined;
+          }
+        }
         throw new Error(
           getDeliverableErrorMessage(
             data.error,
@@ -771,15 +938,26 @@ export function ContractViewer() {
         );
       }
 
-      setDeliverables(data);
+      delete deliverableSubmissionKeysRef.current[requirementId];
+      if (
+        response.status === 202 ||
+        data.code === "DELIVERABLE_COMMITTED"
+      ) {
+        await loadDeliverables();
+      } else {
+        setDeliverables(data);
+      }
       setDeliverablesNotice(
-        "콘텐츠 제출물을 접수했습니다. 광고주 확인 및 검수 결과를 이 화면에서 확인할 수 있습니다.",
+        response.status === 202
+          ? "콘텐츠 제출은 저장되었습니다. 최신 처리 상태를 다시 불러왔습니다."
+          : "콘텐츠 제출물을 접수했습니다. 광고주 확인 및 검수 결과를 이 화면에서 확인할 수 있습니다.",
       );
       setDeliverableForms((current) => ({
         ...current,
         [requirementId]: { url: "", note: "" },
       }));
     } catch (error) {
+      setRetryDeliverableId(requirementId);
       setDeliverablesError(
         getDeliverableErrorMessage(
           error instanceof Error ? error.message : undefined,
@@ -787,84 +965,8 @@ export function ContractViewer() {
         ),
       );
     } finally {
+      setDeliverableSubmissionProgress(undefined);
       setSubmittingDeliverableId("");
-    }
-  };
-
-  const submitPostLink = async () => {
-    if (!contract) return;
-
-    const postLink = (
-      postLinkDraft?.contractId === contract.id
-        ? postLinkDraft.value
-        : contract.post_link ?? ""
-    ).trim();
-    const urlError = validateDeliverableUrl(postLink);
-
-    if (!postLink) {
-      setPostLinkError("콘텐츠 URL을 입력해 주세요.");
-      setPostLinkNotice("");
-      return;
-    }
-    if (urlError) {
-      setPostLinkError(urlError);
-      setPostLinkNotice("");
-      return;
-    }
-
-    const confirmed = window.confirm(
-      "콘텐츠 URL을 광고주에게 제출할까요? 제출 링크는 광고주 검수 화면과 감사 기록에 남습니다.",
-    );
-    if (!confirmed) return;
-
-    setIsSubmittingPostLink(true);
-    setPostLinkError("");
-    setPostLinkNotice("");
-
-    try {
-      const response = await apiFetch(
-        `/api/contracts/${encodeURIComponent(contract.id)}/post-link`,
-        {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-          body: JSON.stringify({ post_link: postLink }),
-        },
-      );
-      const data = (await response.json()) as {
-        contract?: Contract;
-        error?: string;
-      };
-
-      if (!response.ok || !data.contract) {
-        throw new Error(
-          getDeliverableErrorMessage(
-            data.error,
-            `콘텐츠 URL 제출 실패 (${response.status})`,
-          ),
-        );
-      }
-
-      replaceContract(data.contract);
-      setPostLinkDraft({
-        contractId: data.contract.id,
-        value: data.contract.post_link ?? postLink,
-      });
-      setPostLinkNotice("콘텐츠 URL을 제출했습니다. 광고주에게 제출 완료로 표시됩니다.");
-    } catch (error) {
-      setPostLinkError(
-        error instanceof Error
-          ? getDeliverableErrorMessage(
-              error.message,
-              "콘텐츠 URL 제출에 실패했습니다.",
-            )
-          : "콘텐츠 URL 제출에 실패했습니다.",
-      );
-    } finally {
-      setIsSubmittingPostLink(false);
     }
   };
 
@@ -882,11 +984,13 @@ export function ContractViewer() {
         ctx.fillStyle = "#fff";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
-      setSignerName(contract?.influencer_info.name ?? "");
+      setSignerName(
+        serverSignerDisplayName || contract?.influencer_info.name || "",
+      );
       setConsentAccepted(false);
       setSignError("");
     }
-  }, [contract?.influencer_info.name, showSignModal]);
+  }, [contract?.influencer_info.name, serverSignerDisplayName, showSignModal]);
 
   useEffect(() => {
     if (
@@ -907,11 +1011,31 @@ export function ContractViewer() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setVerifiedAccessKey("");
+      setContractDocumentHash("");
       setServerAccessRole(undefined);
       setSharedContractError("");
     }, 0);
     return () => window.clearTimeout(timer);
   }, [accessVerificationKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const currentUrl = new URL(window.location.href);
+    const fragment = new URLSearchParams(currentUrl.hash.replace(/^#/, ""));
+    const hadQueryToken = currentUrl.searchParams.has("token");
+    const hadFragmentToken = fragment.has("token");
+    if (!hadQueryToken && !hadFragmentToken) return;
+
+    currentUrl.searchParams.delete("token");
+    fragment.delete("token");
+    currentUrl.hash = fragment.toString();
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`,
+    );
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(
@@ -933,9 +1057,32 @@ export function ContractViewer() {
       setSharedContractError("");
 
       try {
+        const pendingShareToken = pendingShareTokenRef.current;
+        if (pendingShareToken) {
+          const shareSessionResponse = await apiFetch(
+            `/api/contracts/${encodeURIComponent(id)}/share-session`,
+            {
+              method: "POST",
+              credentials: "include",
+              headers: {
+                Accept: "application/json",
+                "X-Yeollock-Share-Token": pendingShareToken,
+              },
+            },
+          );
+          if (!shareSessionResponse.ok) {
+            const shareSessionData = (await shareSessionResponse.json().catch(
+              () => ({}),
+            )) as { error?: string };
+            throw new Error(
+              shareSessionData.error ?? "계약 링크를 확인할 수 없습니다.",
+            );
+          }
+          pendingShareTokenRef.current = "";
+        }
+
         await waitForFastLoginTransition("influencer", 6_000);
         const query = new URLSearchParams();
-        if (shareToken) query.set("token", shareToken);
         if (supportAccessRequestId)
           query.set("support", supportAccessRequestId);
         const suffix = query.size > 0 ? `?${query.toString()}` : "";
@@ -955,16 +1102,24 @@ export function ContractViewer() {
         );
         const data = (await response.json()) as {
           contract?: Contract;
+          document_hash?: string;
+          signer_display_name?: string;
           access_role?: string;
           error?: string;
         };
 
-        if (!response.ok || !data.contract) {
+        if (
+          !response.ok ||
+          !data.contract ||
+          !/^[0-9a-f]{64}$/i.test(data.document_hash ?? "")
+        ) {
           throw new Error(getContractLoadErrorMessage(data.error));
         }
 
         if (!cancelled) {
           replaceContract(data.contract);
+          setContractDocumentHash(data.document_hash!);
+          setServerSignerDisplayName(data.signer_display_name ?? "");
           setVerifiedAccessKey(accessVerificationKey);
           setServerAccessRole(data.access_role);
         }
@@ -993,7 +1148,6 @@ export function ContractViewer() {
     accessVerificationKey,
     id,
     replaceContract,
-    shareToken,
     supportAccessRequestId,
     verifiedAccessKey,
   ]);
@@ -1078,7 +1232,7 @@ export function ContractViewer() {
     new Date(contract.evidence!.share_token_expires_at!).getTime() <
       currentTime;
   const hasValidShareToken = serverAccessVerified;
-  const isOperatorSupportView = serverAccessRole === "admin" && !shareToken;
+  const isOperatorSupportView = serverAccessRole === "admin";
   const hasAuthenticatedContractAccess =
     serverAccessRole === "advertiser" || serverAccessRole === "influencer";
   const canRequestOperatorSupport =
@@ -1154,10 +1308,8 @@ export function ContractViewer() {
   const displayBudget = formatMoneyLabel(contract.campaign?.budget, "미지정");
   const verificationPath = `/influencer/verification?contractId=${encodeURIComponent(
     contract.id,
-  )}${shareToken ? `&token=${encodeURIComponent(shareToken)}` : ""}`;
-  const currentContractPath = `/contract/${encodeURIComponent(contract.id)}${
-    shareToken ? `?token=${encodeURIComponent(shareToken)}` : ""
-  }`;
+  )}`;
+  const currentContractPath = `/contract/${encodeURIComponent(contract.id)}`;
   const loginForVerificationPath = buildLoginRedirect(
     "/login/influencer",
     verificationPath,
@@ -1172,13 +1324,6 @@ export function ContractViewer() {
   );
   const influencerVerificationStatus =
     verificationSummary?.influencer.status ?? "not_submitted";
-  const influencerRejectionGuidance =
-    influencerVerificationStatus === "rejected"
-      ? getVerificationRejectionGuidance(
-          verificationSummary?.influencer.latest_request,
-          "influencer_account",
-        )
-      : undefined;
   const hasVerificationStatusError =
     Boolean(verificationStatusError) && verificationStatusCode !== 401;
   const isInfluencerAuthenticated =
@@ -1299,7 +1444,9 @@ export function ContractViewer() {
     : signStatusMessage;
   const primaryCtaDescription = shouldShowContractReviewCta
     ? "확인 후 PDF 계약서가 바로 열립니다."
-    : !hasReviewedContractDocument
+    : !isContractSignableState
+      ? "광고주가 서명 링크를 만들면 서명할 수 있습니다."
+      : !hasReviewedContractDocument
       ? "마지막 페이지까지 확인하면 서명할 수 있습니다."
       : "서명하면 감사 이력이 기록되고 서명본 PDF가 다운로드됩니다.";
   const primaryCtaDisabled = shouldShowContractReviewCta
@@ -1341,13 +1488,15 @@ export function ContractViewer() {
     isContractClosed
       ? "광고 계약이 마감되었습니다"
       : contract.status === "SIGNED"
-        ? "서명 완료 후 콘텐츠를 제출하세요"
+        ? "콘텐츠를 제출하세요"
       : "계약 내용 확인";
   const heroDescription =
     isContractClosed
       ? "콘텐츠 확인 및 검수가 완료되어 추가 제출과 서명 액션은 차단됩니다."
       : contract.status === "SIGNED"
         ? "서명본은 저장되었습니다. 남은 콘텐츠는 URL이나 파일로 제출하고 광고주 확인 및 검수 결과를 확인하세요."
+      : !isContractSignableState
+        ? "핵심 조건과 PDF 원문을 확인할 수 있습니다. 광고주가 서명 링크를 만들면 서명할 수 있습니다."
       : needsInfluencerAccountSession
         ? isFixedCampaign
           ? "계약 내용은 먼저 확인할 수 있습니다. 가입 또는 로그인 후 이 계약으로 돌아와 서명합니다."
@@ -1380,31 +1529,6 @@ export function ContractViewer() {
                 : !isContractPlatformVerificationApproved
                   ? "계정 인증 후 서명 가능"
                   : "서명 가능";
-  const verificationPanelTitle = isContractPlatformVerificationApproved
-    ? "계정 인증 확인됨"
-    : influencerRejectionGuidance
-      ? "계정 인증 재제출 필요"
-      : isInfluencerVerificationApproved
-        ? "계약 채널 인증 필요"
-        : "서명 전 계정 인증 필요";
-  const verificationPanelDescription = isContractPlatformVerificationApproved
-    ? isFixedCampaign
-      ? "계정 인증은 확인되었습니다. 서명 가능 여부는 계약 내용 확인과 광고주 서명 요청 상태에 따라 열립니다."
-      : "계정 인증은 확인되었습니다. 서명 가능 여부는 PDF 확인과 광고주 서명 요청 상태에 따라 열립니다."
-    : influencerRejectionGuidance
-      ? `계약 검토는 가능하지만 서명은 제한됩니다. 반려 사유: ${influencerRejectionGuidance.reviewerNote}`
-      : isInfluencerVerificationApproved
-        ? "다른 플랫폼 인증은 완료됐지만, 이 계약에 적힌 채널과 일치하는 인증이 아직 없습니다."
-        : "계약 검토는 가능하지만 서명은 계정 인증 승인 후 진행할 수 있습니다.";
-  const verificationPanelActionLabel = isContractPlatformVerificationApproved
-    ? "인증 정보 보기"
-    : needsInfluencerAccountSession
-      ? "가입/로그인 후 인증"
-      : influencerRejectionGuidance
-        ? "계정 인증 재제출"
-        : isInfluencerVerificationApproved
-          ? "계약 채널 인증"
-          : "계정 인증 진행";
   const advertiserTrust = contract.advertiser_trust;
   const advertiserName = contract.advertiser_info?.name || "광고주";
   const isAdvertiserBusinessVerified =
@@ -1549,7 +1673,6 @@ export function ContractViewer() {
     `/api/contracts/${encodeURIComponent(contract.id)}/review-pdf`,
   );
   const reviewPdfParams = new URLSearchParams();
-  if (shareToken) reviewPdfParams.set("token", shareToken);
   if (supportAccessRequestId) reviewPdfParams.set("support", supportAccessRequestId);
   const reviewPdfHref = `${reviewPdfBaseHref}${
     reviewPdfParams.toString() ? `?${reviewPdfParams.toString()}` : ""
@@ -1600,7 +1723,6 @@ export function ContractViewer() {
           headers: {
             "Content-Type": "application/json",
             Accept: "application/json",
-            ...(shareToken ? { "X-Yeollock-Share-Token": shareToken } : {}),
           },
           body: JSON.stringify({
             reason,
@@ -1680,6 +1802,21 @@ export function ContractViewer() {
       </header>
 
       <main className={mainClassName}>
+        {contractVersionNotice ? (
+          <div
+            role="alert"
+            className="mx-auto mb-3 flex w-full max-w-6xl items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900"
+          >
+            <span>{contractVersionNotice}</span>
+            <button
+              type="button"
+              onClick={() => setContractVersionNotice("")}
+              className="shrink-0 text-xs font-semibold text-amber-800 underline underline-offset-2"
+            >
+              닫기
+            </button>
+          </div>
+        ) : null}
         <section className={contentSectionClassName}>
           {!shouldShowPdfReview && (
             <div className={summaryCardClassName}>
@@ -1695,9 +1832,11 @@ export function ContractViewer() {
                   <FileText className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
                   <span className="truncate">{contract.type} 계약</span>
                 </span>
-                <span className="shrink-0 rounded-full bg-neutral-950 px-2.5 py-1 text-[11px] font-semibold text-white">
-                  {getStatusLabel(contract.status)}
-                </span>
+                {!isContractSignedOrClosed ? (
+                  <span className="shrink-0 rounded-full bg-neutral-950 px-2.5 py-1 text-[11px] font-semibold text-white">
+                    {getStatusLabel(contract.status)}
+                  </span>
+                ) : null}
               </div>
               <h2 className={summaryTitleClassName}>
                 {heroTitle}
@@ -1811,12 +1950,8 @@ export function ContractViewer() {
                     계약 기록
                   </p>
                   <h2 className="mt-1 text-base font-semibold text-neutral-950 sm:text-lg">
-                    서명 완료 계약서
+                    계약서 원문
                   </h2>
-                </div>
-                <div className="flex items-center gap-2 text-sm font-medium text-neutral-700">
-                  <CheckCircle2 className="h-4 w-4" />
-                  서명 완료
                 </div>
               </div>
             </div>
@@ -1867,60 +2002,33 @@ export function ContractViewer() {
               ))}
             </div>
 
-            <div className="border-t border-neutral-200 bg-white px-4 py-4 sm:px-6">
-              <a
-                href={reviewPdfHref}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-[#fbfbfc] text-sm font-semibold text-neutral-800 transition hover:border-neutral-300 hover:bg-white hover:shadow-[0_10px_24px_rgba(15,23,42,0.08)]"
-              >
-                <ExternalLink className="h-4 w-4" strokeWidth={1.8} />
-                계약서 전체보기
-              </a>
-            </div>
           </section>
 
           {isContractSignedOrClosed && (
-            <>
-              <PostLinkSubmissionPanel
-                value={
-                  postLinkDraft?.contractId === contract.id
-                    ? postLinkDraft.value
-                    : contract.post_link ?? ""
-                }
-                currentLink={contract.post_link}
-                error={postLinkError}
-                notice={postLinkNotice}
-                isSubmitting={isSubmittingPostLink}
-                canSubmit={
-                  canSubmitInfluencerContent
-                }
-                isClosed={isContractClosed}
-                loginHref={loginForVerificationPath}
-                onChange={(value) => {
-                  setPostLinkDraft({ contractId: contract.id, value });
-                  if (postLinkError) setPostLinkError("");
-                  if (postLinkNotice) setPostLinkNotice("");
-                }}
-                onSubmit={submitPostLink}
-              />
               <InfluencerDeliverablesPanel
                 data={deliverables}
+                legacyPostLink={contract.post_link}
                 error={deliverablesError}
                 notice={deliverablesNotice}
                 isLoading={isLoadingDeliverables}
                 forms={deliverableForms}
                 submittingRequirementId={submittingDeliverableId}
+                submissionProgress={deliverableSubmissionProgress}
+                retryRequirementId={retryDeliverableId}
                 onReload={loadDeliverables}
-                onFormChange={(requirementId, patch) =>
+                onFormChange={(requirementId, patch) => {
+                  delete deliverableSubmissionKeysRef.current[requirementId];
+                  if (retryDeliverableId === requirementId) {
+                    setRetryDeliverableId("");
+                  }
                   setDeliverableForms((current) => ({
                     ...current,
                     [requirementId]: {
                       ...(current[requirementId] ?? { url: "", note: "" }),
                       ...patch,
                     },
-                  }))
-                }
+                  }));
+                }}
                 onSubmit={submitDeliverable}
                 loginHref={loginForVerificationPath}
                 canSubmit={
@@ -1928,7 +2036,6 @@ export function ContractViewer() {
                 }
                 isClosed={isContractClosed}
               />
-            </>
           )}
             </>
           )}
@@ -1956,16 +2063,12 @@ export function ContractViewer() {
                 checked={allApproved}
                 label={contractReviewStepLabel}
               />
-              <ChecklistRow
-                checked={signatureChecklistChecked}
-                label={signatureChecklistLabel}
-              />
-              {isContractSignedOrClosed && (
+              {!isContractSignedOrClosed ? (
                 <ChecklistRow
-                  checked={Boolean(contract.post_link)}
-                  label="콘텐츠 URL 제출"
+                  checked={signatureChecklistChecked}
+                  label={signatureChecklistLabel}
                 />
-              )}
+              ) : null}
               {isContractSignedOrClosed && deliverables?.summary && (
                 <>
                   <ChecklistRow
@@ -1974,7 +2077,7 @@ export function ContractViewer() {
                       deliverables.summary.submitted >=
                         deliverables.summary.total
                     }
-                    label={`콘텐츠 파일 제출 ${deliverables.summary.submitted}/${deliverables.summary.total}`}
+                    label={`콘텐츠 제출 ${deliverables.summary.submitted}/${deliverables.summary.total}`}
                   />
                   <ChecklistRow
                     checked={deliverables.summary.submitted > 0}
@@ -1996,37 +2099,6 @@ export function ContractViewer() {
               )}
             </div>
           </div>
-
-          {!isOperatorSupportView && (
-            <div className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_36px_rgba(15,23,42,0.05)]">
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white">
-                  <ShieldCheck className="h-5 w-5" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-neutral-950">
-                    {verificationPanelTitle}
-                  </p>
-                  <p className="mt-1 text-xs leading-5 text-neutral-500">
-                    {verificationPanelDescription}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() =>
-                  navigate(
-                    isInfluencerReviewerAuthenticated
-                      ? verificationPath
-                      : signupForContractPath,
-                  )
-                }
-                className="mt-4 h-10 w-full rounded-lg border border-neutral-200 bg-[#fbfbfc] text-sm font-semibold text-neutral-700 transition hover:border-neutral-400 hover:bg-white hover:shadow-[0_10px_22px_rgba(15,23,42,0.08)]"
-              >
-                {verificationPanelActionLabel}
-              </button>
-            </div>
-          )}
 
           <button
             type="button"
@@ -2361,13 +2433,13 @@ export function ContractViewer() {
               </span>
               <input
                 value={signerName}
-                onChange={(event) => {
-                  setSignerName(event.target.value);
-                  if (signError) setSignError("");
-                }}
-                className="mt-2 h-11 w-full rounded-[12px] border border-neutral-200 bg-[#fbfaf7] px-3 text-sm font-semibold text-neutral-950 outline-none transition focus:border-neutral-950 focus:bg-white focus:shadow-[0_0_0_3px_rgba(23,23,23,0.08)]"
-                placeholder="이름 또는 활동명"
+                readOnly
+                aria-readonly="true"
+                className="mt-2 h-11 w-full cursor-default rounded-[12px] border border-neutral-200 bg-neutral-100 px-3 text-sm font-semibold text-neutral-950 outline-none"
               />
+              <span className="mt-1.5 block text-xs text-neutral-500">
+                로그인한 계정의 확인된 이름으로 기록됩니다.
+              </span>
             </label>
             <div
               className="grid grid-cols-2 gap-2"
@@ -2512,11 +2584,14 @@ export function ContractViewer() {
 
 function InfluencerDeliverablesPanel({
   data,
+  legacyPostLink,
   error,
   notice,
   isLoading,
   forms,
   submittingRequirementId,
+  submissionProgress,
+  retryRequirementId,
   canSubmit,
   isClosed,
   loginHref,
@@ -2525,11 +2600,16 @@ function InfluencerDeliverablesPanel({
   onSubmit,
 }: {
   data?: DeliverablesResponse;
+  legacyPostLink?: string;
   error: string;
   notice: string;
   isLoading: boolean;
   forms: Record<string, { url: string; note: string; file?: File }>;
   submittingRequirementId: string;
+  submissionProgress?: DeliverableSubmissionProgress & {
+    requirementId: string;
+  };
+  retryRequirementId: string;
   canSubmit: boolean;
   isClosed: boolean;
   loginHref: string;
@@ -2543,6 +2623,9 @@ function InfluencerDeliverablesPanel({
   const requirements = data?.requirements ?? [];
   const summary = data?.summary;
   const isInitialLoading = isLoading && !data;
+  const shouldShowLegacyPostLink =
+    Boolean(legacyPostLink) &&
+    !data?.submissions.some((submission) => submission.url === legacyPostLink);
 
   return (
     <section className="overflow-hidden rounded-lg border border-neutral-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)]">
@@ -2550,13 +2633,13 @@ function InfluencerDeliverablesPanel({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-500">
-              콘텐츠 파일 제출
+              콘텐츠 제출
             </p>
             <h2 className="mt-1 text-lg font-semibold text-neutral-950">
-              캡처, PDF, 스토리 캡처 보관
+              URL 또는 파일 제출
             </h2>
             <p className="mt-1 text-sm leading-6 text-neutral-500">
-              광고 계약 이행 확인에 필요한 콘텐츠 파일을 제출합니다.
+              광고 계약 이행 확인에 필요한 URL이나 증빙 파일을 한곳에서 제출합니다.
             </p>
           </div>
           <button
@@ -2606,6 +2689,25 @@ function InfluencerDeliverablesPanel({
         </div>
       )}
 
+      {shouldShowLegacyPostLink && legacyPostLink && (
+        <div className="flex items-center justify-between gap-3 border-b border-neutral-200 bg-neutral-50 px-5 py-3 sm:px-6">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-neutral-500">기존 제출 URL</p>
+            <p className="mt-0.5 truncate text-sm font-semibold text-neutral-800">
+              {legacyPostLink}
+            </p>
+          </div>
+          <a
+            href={legacyPostLink}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-700 transition hover:border-neutral-400"
+          >
+            URL 열기
+          </a>
+        </div>
+      )}
+
       <div className="divide-y divide-neutral-100">
         {isInitialLoading ? (
           <div className="p-5 text-sm font-semibold text-neutral-500 sm:p-6">
@@ -2635,6 +2737,10 @@ function InfluencerDeliverablesPanel({
               );
             const isComplete = approvedCount >= requirement.quantity;
             const isSubmitting = submittingRequirementId === requirement.id;
+            const progress =
+              submissionProgress?.requirementId === requirement.id
+                ? submissionProgress
+                : undefined;
             const statusText = isComplete
               ? "승인 완료"
               : revisionRequest
@@ -2772,6 +2878,7 @@ function InfluencerDeliverablesPanel({
                       </span>
                       <input
                         value={form.url}
+                        disabled={isSubmitting}
                         onChange={(event) =>
                           onFormChange(requirement.id, {
                             url: event.target.value,
@@ -2795,6 +2902,7 @@ function InfluencerDeliverablesPanel({
                       </span>
                       <textarea
                         value={form.note}
+                        disabled={isSubmitting}
                         onChange={(event) =>
                           onFormChange(requirement.id, {
                             note: event.target.value,
@@ -2816,6 +2924,7 @@ function InfluencerDeliverablesPanel({
                       )}
                       <input
                         type="file"
+                        disabled={isSubmitting}
                         accept={DELIVERABLE_FILE_ACCEPT}
                         className="sr-only"
                         onChange={(event) =>
@@ -2840,7 +2949,23 @@ function InfluencerDeliverablesPanel({
                       }
                       className="h-10 rounded-lg bg-neutral-950 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:bg-neutral-200 disabled:text-neutral-500"
                     >
-                      {isSubmitting ? "제출 중" : "검수 요청"}
+                      <span aria-live="polite">
+                        {isSubmitting
+                          ? progress?.phase === "hashing"
+                            ? "파일 확인 중"
+                            : progress?.phase === "ticketing"
+                              ? "업로드 준비 중"
+                              : progress?.phase === "uploading"
+                                ? `업로드 중${
+                                    progress.percent === undefined
+                                      ? ""
+                                      : ` ${progress.percent}%`
+                                  }`
+                                : "제출 확인 중"
+                          : retryRequirementId === requirement.id
+                            ? "다시 시도"
+                            : "검수 요청"}
+                      </span>
                     </button>
                   </div>
                 )}
@@ -2848,124 +2973,6 @@ function InfluencerDeliverablesPanel({
             );
           })
         )}
-      </div>
-    </section>
-  );
-}
-
-function PostLinkSubmissionPanel({
-  value,
-  currentLink,
-  error,
-  notice,
-  isSubmitting,
-  canSubmit,
-  isClosed,
-  loginHref,
-  onChange,
-  onSubmit,
-}: {
-  value: string;
-  currentLink?: string;
-  error: string;
-  notice: string;
-  isSubmitting: boolean;
-  canSubmit: boolean;
-  isClosed: boolean;
-  loginHref: string;
-  onChange: (value: string) => void;
-  onSubmit: () => void;
-}) {
-  const urlError = validateDeliverableUrl(value);
-  const disabled =
-    !canSubmit || isSubmitting || !value.trim() || Boolean(urlError);
-
-  return (
-    <section className="overflow-hidden rounded-lg border border-neutral-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)]">
-      <div className="border-b border-neutral-200 bg-[#fbfbfc] px-5 py-4 sm:px-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-500">
-              콘텐츠 URL 제출
-            </p>
-            <h2 className="mt-1 text-lg font-semibold text-neutral-950">
-              콘텐츠 제출 링크
-            </h2>
-            <p className="mt-1 text-sm leading-6 text-neutral-500">
-              광고주는 이 링크를 기준으로 광고표시, 필수 해시태그, 브랜드 태그, 게시일을 확인합니다.
-            </p>
-          </div>
-          {currentLink ? (
-            <a
-              href={currentLink}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-700 transition hover:border-neutral-400"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              콘텐츠 제출 링크 열기
-            </a>
-          ) : null}
-        </div>
-      </div>
-
-      {!canSubmit && (
-        <div className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-800 sm:px-6">
-          {isClosed ? (
-            "광고 계약이 마감되어 추가 콘텐츠 URL 제출은 차단됩니다."
-          ) : (
-            <>
-              콘텐츠 URL 제출은 로그인한 인플루언서 계정에서만 가능합니다.
-              <a href={loginHref} className="ml-2 underline underline-offset-4">
-                로그인
-              </a>
-            </>
-          )}
-        </div>
-      )}
-
-      {error && (
-        <div className="border-b border-rose-200 bg-rose-50 px-5 py-3 text-sm font-semibold text-rose-700 sm:px-6">
-          {error}
-        </div>
-      )}
-
-      {notice && !error && (
-        <div className="border-b border-emerald-200 bg-emerald-50 px-5 py-3 text-sm font-semibold text-emerald-800 sm:px-6">
-          {notice}
-        </div>
-      )}
-
-      <div className="grid gap-3 p-5 sm:grid-cols-[minmax(0,1fr)_140px] sm:p-6">
-        <label className="block min-w-0">
-          <span className="flex items-center gap-2 text-xs font-semibold text-neutral-700">
-            <Link2 className="h-3.5 w-3.5" />
-            콘텐츠 URL
-          </span>
-          <input
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-            className={`mt-2 h-10 w-full rounded-lg border bg-white px-3 text-sm outline-none transition focus:border-neutral-950 ${
-              urlError ? "border-rose-300" : "border-neutral-200"
-            }`}
-            placeholder="https://..."
-            aria-invalid={Boolean(urlError || error)}
-            disabled={!canSubmit || isSubmitting}
-          />
-          {urlError && (
-            <span className="mt-1 block text-xs font-semibold text-rose-700">
-              {urlError}
-            </span>
-          )}
-        </label>
-        <button
-          type="button"
-          onClick={onSubmit}
-          disabled={disabled}
-          className="mt-6 h-10 rounded-lg bg-neutral-950 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500 sm:mt-auto"
-        >
-          {isSubmitting ? "제출 중" : "콘텐츠 URL 제출"}
-        </button>
       </div>
     </section>
   );

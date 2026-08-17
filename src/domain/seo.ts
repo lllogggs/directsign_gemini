@@ -86,7 +86,7 @@ const seoKeywordList = [
   "공동구매 계약",
   "광고 제안 관리",
   "크리에이터 전자계약",
-  "검토 링크",
+  "계약서 링크",
   "전자서명",
 ];
 
@@ -123,17 +123,17 @@ const globalCreatorIntentKeywords = [
 const seoFeatureList = [
   "광고 조건 입력",
   "계약서 작성",
-  "검토 링크 발송",
-  "수정 협의",
+  "서명 링크 공유",
+  "PDF 원문 확인",
   "전자서명",
   "서명 완료본 보관",
 ];
 
 const defaultSeoDescription =
-  "협찬, PPL, 공동구매 계약을 작성부터 검토 링크, 전자서명, 증빙 보관까지 관리합니다.";
+  "협찬, PPL, 공동구매 계약서를 작성하고 서명 링크로 PDF 원문 확인, 전자서명, 증빙 보관까지 관리합니다.";
 
 const searchIntentSeoDescription =
-  "광고주와 인플루언서가 협찬, PPL, 공동구매 계약을 작성부터 검토 링크, 전자서명, 증빙 보관까지 관리합니다.";
+  "광고주와 인플루언서가 협찬, PPL, 공동구매 계약서를 작성하고 서명 링크로 PDF 원문 확인, 전자서명, 증빙 보관까지 관리합니다.";
 
 export const normalizeSeoPath = (pathname: string) =>
   pathname.replace(/\/+$/, "") || "/";
@@ -350,14 +350,14 @@ const getRouteSeoConfig = (pathname: string): RouteSeoConfig => {
     "/intro/advertiser": {
       title: `광고주 광고 계약 관리 - ${PRODUCT_NAME}`,
       description:
-        "광고 조건 입력, 계약서 작성, 검토 링크 발송, 전자서명, 콘텐츠 제출 확인까지 광고주 계약 운영을 한 흐름으로 정리합니다.",
+        "광고 조건 입력, 계약서 작성, 서명 링크 공유, 전자서명, 콘텐츠 제출 확인까지 광고주 계약 운영을 한 흐름으로 정리합니다.",
       canonicalPath: "/intro/advertiser",
       robots: publicRobotsContent,
     },
     "/intro/influencer": {
       title: `인플루언서 광고 계약 검토 - ${PRODUCT_NAME}`,
       description:
-        "광고주가 보낸 1:1 계약 조건을 인플루언서가 확인하고 수정 요청과 전자서명을 간단하게 진행할 수 있습니다.",
+        "광고주가 보낸 1:1 계약의 핵심 조건과 PDF 원문을 확인하고 전자서명과 제출 상태를 관리할 수 있습니다.",
       canonicalPath: "/intro/influencer",
       robots: publicRobotsContent,
     },
@@ -511,7 +511,7 @@ const publicSearchIntentPages: Record<string, IntentAwareSeoCopy> = {
   "/intro/advertiser": {
     title: `광고주 인플루언서 계약 관리 | ${PRODUCT_NAME}`,
     description:
-      "브랜드 협찬, PPL, 공동구매 제안을 계약서 작성, 검토 링크, 전자서명, 증빙 보관까지 관리합니다.",
+      "브랜드 협찬, PPL, 공동구매 제안을 계약서 작성, 서명 링크 공유, 전자서명, 증빙 보관까지 관리합니다.",
     canonicalPath: "/intro/advertiser",
     robots: publicRobotsContent,
     keywords: advertiserIntentKeywords,
@@ -519,7 +519,7 @@ const publicSearchIntentPages: Record<string, IntentAwareSeoCopy> = {
   "/intro/influencer": {
     title: `인플루언서 광고 계약 검토·전자서명 | ${PRODUCT_NAME}`,
     description:
-      "받은 협찬, PPL, 공동구매 계약을 확인하고 수정 요청, 전자서명, 제출 상태를 관리합니다.",
+      "받은 협찬, PPL, 공동구매 계약의 핵심 조건과 PDF 원문을 확인하고 전자서명과 제출 상태를 관리합니다.",
     canonicalPath: "/intro/influencer",
     robots: publicRobotsContent,
     keywords: influencerIntentKeywords,
@@ -527,7 +527,7 @@ const publicSearchIntentPages: Record<string, IntentAwareSeoCopy> = {
   "/privacy": {
     title: `개인정보 처리방침 - ${PRODUCT_NAME}`,
     description:
-      "계정 인증, 광고 계약, 검토 링크, 전자서명 증빙에 필요한 개인정보 처리 기준입니다.",
+      "계정 인증, 광고 계약, 계약서 링크, 전자서명 증빙에 필요한 개인정보 처리 기준입니다.",
     canonicalPath: "/privacy",
     robots: legalRobotsContent,
     keywords: ["광고 계약 개인정보", "전자서명 개인정보", "계약 서비스 개인정보"],

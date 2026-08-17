@@ -418,7 +418,7 @@ function createCampaignFormFromRecord(
     uploadDeadline: campaign.uploadDeadline ?? "",
     platforms: campaign.platforms?.length ? [...campaign.platforms] : ["instagram"],
     targetCountries: campaign.targetCountries ? [...campaign.targetCountries] : [],
-    deliverables: campaign.deliverables?.join(", ") ?? "",
+    deliverables: campaign.deliverables?.join("\n") ?? "",
     eligibilityMinimums: createCampaignEligibilityMinimums(
       campaign.eligibilityRules,
     ),
@@ -636,16 +636,14 @@ function isCampaignApplicationStaleError(
   );
 }
 
-async function fetchPublicMarketplaceCampaigns(fresh = false) {
-  const path = fresh
-    ? `/api/marketplace/campaigns?fresh=${Date.now()}`
-    : "/api/marketplace/campaigns";
-  const response = await apiFetch(path, {
+async function fetchPublicMarketplaceCampaigns(
+  cache: RequestCache = "default",
+) {
+  const response = await apiFetch("/api/marketplace/campaigns", {
+    cache,
     headers: {
       Accept: "application/json",
-      ...(fresh ? { "Cache-Control": "no-cache" } : {}),
     },
-    ...(fresh ? { cache: "no-store" as const } : {}),
   });
   if (!response.ok) throw new Error("캠페인 목록을 불러오지 못했습니다.");
   const data = (await response.json()) as MarketplaceCampaignsResponse;
@@ -654,19 +652,16 @@ async function fetchPublicMarketplaceCampaigns(fresh = false) {
 
 async function fetchPublicMarketplaceCampaign(
   campaignId: string,
-  fresh = false,
+  cache: RequestCache = "default",
 ) {
-  const path = `/api/marketplace/campaigns/${encodeURIComponent(campaignId)}${
-    fresh ? `?fresh=${Date.now()}` : ""
-  }`;
+  const path = `/api/marketplace/campaigns/${encodeURIComponent(campaignId)}`;
   const response = await apiFetch(
     path,
     {
+      cache,
       headers: {
         Accept: "application/json",
-        ...(fresh ? { "Cache-Control": "no-cache" } : {}),
       },
-      ...(fresh ? { cache: "no-store" as const } : {}),
     },
   );
   const data = (await response.json().catch(() => ({}))) as
@@ -1217,11 +1212,7 @@ export function AdvertiserCampaignRecruitmentPage() {
         uploadDeadline: form.uploadDeadline.trim(),
         platforms: [...form.platforms].sort(),
         targetCountries: [...form.targetCountries].sort(),
-        deliverables: form.deliverables
-          .split(",")
-          .map((item) => item.trim())
-          .filter(Boolean)
-          .slice(0, 6),
+        deliverables: parseCampaignDeliverables(form.deliverables).slice(0, 6),
         eligibilityRules: buildCampaignEligibilityRules(
           form.eligibilityMinimums,
           form.platforms,
@@ -1482,8 +1473,8 @@ export function AdvertiserCampaignRecruitmentPage() {
     ? "예: 제품 제공(소비자가 89,000원 상당)"
     : "예: 150만-300만원";
   const deliverablesPlaceholder = isProductExperienceCampaign
-    ? "예: 네이버 블로그 후기 1건, 인스타 피드 1건"
-    : "예: 릴스 1건, 스토리 2건";
+    ? "예: 네이버 블로그 후기 1건\n인스타 피드 1건"
+    : "예: 릴스 1건\n스토리 2건";
   const summaryPlaceholder = isProductExperienceCampaign
     ? "콘텐츠 작성 기준, 게시 기한, 공개 유지 기간, 필수 문구를 적어 주세요."
     : "인플루언서가 바로 판단할 수 있도록 타깃, 콘텐츠 톤, 필수 문구, 검수 기준을 적어 주세요.";
@@ -1900,8 +1891,9 @@ export function AdvertiserCampaignRecruitmentPage() {
             </CampaignField>
 
             <CampaignField label="콘텐츠 조건">
-              <input
+              <textarea
                 required
+                rows={3}
                 value={form.deliverables}
                 onChange={(event) =>
                   setForm((current) => ({
@@ -1910,7 +1902,7 @@ export function AdvertiserCampaignRecruitmentPage() {
                   }))
                 }
                 placeholder={deliverablesPlaceholder}
-                className="campaign-input"
+                className="campaign-input min-h-[96px] resize-y"
               />
             </CampaignField>
 
@@ -2418,7 +2410,7 @@ export function InfluencerCampaignDiscoveryPage() {
 
       if (countSync.kind === "preserve") return;
       try {
-        const campaigns = await fetchPublicMarketplaceCampaigns(true);
+        const campaigns = await fetchPublicMarketplaceCampaigns();
         setState({ status: "ready", campaigns });
       } catch {
         // The application succeeded. Keep the visible count unchanged rather than guessing.
@@ -2434,7 +2426,7 @@ export function InfluencerCampaignDiscoveryPage() {
       setApplicationNotice(undefined);
       setState({ status: "loading" });
       try {
-        const campaigns = await fetchPublicMarketplaceCampaigns(true);
+        const campaigns = await fetchPublicMarketplaceCampaigns("reload");
         setState({ status: "ready", campaigns });
         setApplicationNotice({
           campaignId: staleCampaignId,
@@ -3179,7 +3171,6 @@ export function PublicCampaignRecruitmentPage() {
       try {
         const latestCampaign = await fetchPublicMarketplaceCampaign(
           appliedCampaignId,
-          true,
         );
         setState({ status: "ready", campaign: latestCampaign });
       } catch {
@@ -3197,7 +3188,7 @@ export function PublicCampaignRecruitmentPage() {
       try {
         const latestCampaign = await fetchPublicMarketplaceCampaign(
           staleCampaignId,
-          true,
+          "reload",
         );
         setState({ status: "ready", campaign: latestCampaign });
         setApplicationNotice({
@@ -5060,7 +5051,7 @@ type CampaignRecruitmentFact = {
 
 function parseCampaignDeliverables(value: string) {
   return value
-    .split(",")
+    .split(/\r?\n/)
     .map((item) => item.trim())
     .filter(Boolean);
 }

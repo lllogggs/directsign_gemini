@@ -494,6 +494,20 @@ const buildRequirementText = (
   return parts.join(", ");
 };
 
+const withKoreanObjectParticle = (value: string) => {
+  const normalized = value.trim();
+  const lastCharacter = normalized.at(-1);
+  if (!lastCharacter) return normalized;
+
+  const codePoint = lastCharacter.charCodeAt(0);
+  const hasFinalConsonant =
+    codePoint >= 0xac00 &&
+    codePoint <= 0xd7a3 &&
+    (codePoint - 0xac00) % 28 !== 0;
+
+  return `${normalized}${hasFinalConsonant ? "을" : "를"}`;
+};
+
 const getDeliverableItems = (draft: ContractDraft): ContractDeliverableItem[] =>
   getSelectedDeliverableOptions(draft).map((option, index) => {
     const requirements = draft.deliverableRequirements[option.contentType] ?? {};
@@ -760,7 +774,7 @@ const validateContractDraft = (draft: ContractDraft): ValidationError[] => {
         1,
         `${option.contentType}.${field}`,
         getRequirementValue(requirements, field),
-        `${option.platformLabel} ${option.label} ${fieldLabel}을 입력하세요.`,
+        `${option.platformLabel} ${option.label} ${withKoreanObjectParticle(fieldLabel)} 입력하세요.`,
       );
     });
   });
@@ -808,7 +822,7 @@ const buildWorkflow = (status: ContractStatus): Contract["workflow"] => {
   if (status === "DRAFT") {
     return {
       next_actor: "advertiser",
-      next_action: "발송 전 확인에서 누락 조건을 점검하고 공유 링크를 생성하세요.",
+      next_action: "발송 전 확인에서 누락 조건을 점검하고 서명 링크를 만드세요.",
       due_at: addDays(3),
       risk_level: "low",
       last_message: "계약 초안이 저장되었습니다.",
@@ -817,10 +831,10 @@ const buildWorkflow = (status: ContractStatus): Contract["workflow"] => {
 
   return {
     next_actor: "influencer",
-    next_action: "인플루언서 검토 응답을 기다리는 중입니다.",
+    next_action: "계약서 PDF를 확인하고 서명해 주세요.",
     due_at: addDays(2),
     risk_level: "medium",
-    last_message: "공유 링크가 발급되어 상대방 검토를 기다리고 있습니다.",
+    last_message: "최종 계약서와 서명 링크가 준비되었습니다.",
   };
 };
 
@@ -847,24 +861,24 @@ function getAdvertiserVerificationBuilderCopy(
   > = {
     approved: {
       label: "인증 완료",
-      helper: "계약 공유 링크를 생성하고 인플루언서에게 발송할 수 있습니다.",
+      helper: "서명 링크를 만들고 인플루언서에게 발송할 수 있습니다.",
       actionLabel: "인증 정보 보기",
     },
     pending: {
       label: "검수 중",
-      helper: "인증 요청이 접수되었습니다. 검수 완료 전에는 초안 저장만 가능하고 공유 링크 발송은 차단됩니다.",
+      helper: "인증 요청이 접수되었습니다. 검수 완료 전에는 초안 저장만 가능하고 서명 링크 발급은 차단됩니다.",
       actionLabel: "검수 상태 보기",
     },
     rejected: {
       label: "재제출 필요",
       helper: rejectionGuidance
-        ? `반려 사유: ${rejectionGuidance.reviewerNote} 새 증빙으로 다시 제출해야 공유 링크를 발송할 수 있습니다.`
-        : "반려 사유를 확인하고 새 증빙으로 다시 제출해야 공유 링크를 발송할 수 있습니다.",
+        ? `반려 사유: ${rejectionGuidance.reviewerNote} 새 증빙으로 다시 제출해야 서명 링크를 만들 수 있습니다.`
+        : "반려 사유를 확인하고 새 증빙으로 다시 제출해야 서명 링크를 만들 수 있습니다.",
       actionLabel: "재제출",
     },
     not_submitted: {
       label: "인증 필요",
-      helper: "사업자 인증을 완료해야 인플루언서에게 공유 링크를 보낼 수 있습니다.",
+      helper: "사업자 인증을 완료해야 인플루언서에게 서명 링크를 보낼 수 있습니다.",
       actionLabel: "사업자 인증하기",
     },
   };
@@ -947,11 +961,31 @@ export function ContractBuilder() {
   const [isProposalLoading, setIsProposalLoading] = useState(false);
   const loadedProposalRef = useRef<string>();
   const saveContractInFlightRef = useRef(false);
+  const validationSummaryRef = useRef<HTMLDivElement>(null);
+  const pendingValidationFocusRef = useRef<string>();
   const isProposalPartyLocked = Boolean(sourceProposalId);
 
   useEffect(() => {
     if (!isSyncing) saveContractInFlightRef.current = false;
   }, [isSyncing]);
+
+  useEffect(() => {
+    const field = pendingValidationFocusRef.current;
+    if (!field || validationErrors.length === 0) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      const fieldElement = Array.from(
+        document.querySelectorAll<HTMLElement>("[data-validation-field]"),
+      ).find((element) => element.dataset.validationField === field);
+      const target = fieldElement ?? validationSummaryRef.current;
+
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      target?.focus({ preventScroll: true });
+      pendingValidationFocusRef.current = undefined;
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [validationErrors]);
 
   useEffect(() => {
     const proposalId = new URLSearchParams(location.search).get("proposal")?.trim();
@@ -1231,6 +1265,7 @@ export function ContractBuilder() {
     );
 
     if (nextErrors.length > 0) {
+      pendingValidationFocusRef.current = nextErrors[0]?.field;
       setValidationErrors(nextErrors);
       return;
     }
@@ -1321,7 +1356,13 @@ export function ContractBuilder() {
         pdf_status: status === "DRAFT" ? "not_ready" : "draft_ready",
       },
       audit_events: [],
-      clauses,
+      clauses:
+        status === "APPROVED"
+          ? clauses.map((clause) => ({
+              ...clause,
+              status: "APPROVED" as const,
+            }))
+          : clauses,
     };
   };
 
@@ -1351,7 +1392,7 @@ export function ContractBuilder() {
 
     saveContractInFlightRef.current = true;
 
-    const status: ContractStatus = mode === "draft" ? "DRAFT" : "REVIEWING";
+    const status: ContractStatus = mode === "draft" ? "DRAFT" : "APPROVED";
     const existing = savedContractId ? getContract(savedContractId) : undefined;
     const payload = buildContractPayload(status, draftToSave);
     const now = new Date().toISOString();
@@ -1364,7 +1405,7 @@ export function ContractBuilder() {
       description:
         mode === "draft"
           ? "광고주가 계약 초안을 저장했습니다."
-          : "광고주가 발송 전 확인을 마치고 공유 링크를 생성했습니다.",
+          : "광고주가 발송 전 확인을 마치고 서명 링크를 만들었습니다.",
       created_at: now,
     };
 
@@ -1602,7 +1643,7 @@ export function ContractBuilder() {
                 />
               </div>
               <p className="mb-5 text-[13px] font-semibold leading-5 text-neutral-500">
-                조건 입력 후 검토 링크를 생성합니다.
+                조건 입력 후 서명 링크를 만듭니다.
               </p>
 
               {isProposalLoading ? (
@@ -1619,7 +1660,11 @@ export function ContractBuilder() {
                 </div>
               ) : null}
 
-              {stepErrors.length > 0 && <ValidationSummary errors={stepErrors} />}
+              {stepErrors.length > 0 && (
+                <div ref={validationSummaryRef} tabIndex={-1}>
+                  <ValidationSummary errors={stepErrors} />
+                </div>
+              )}
 
               <div className="space-y-5">
               {step === 2 && (
@@ -1834,31 +1879,54 @@ export function ContractBuilder() {
                                   </div>
 
                                   <div className="grid gap-2 border-t border-neutral-200 px-3 pb-3 pt-3">
-                                    {item.fields.map((field) => (
-                                      <div
-                                        key={`${item.contentType}-${field.key}`}
-                                        className="min-w-0"
-                                      >
-                                        <Label className="text-xs text-neutral-500">
-                                          {field.label}
-                                        </Label>
-                                        <Input
-                                          className="mt-1 h-8 scroll-mb-36 bg-white text-xs lg:scroll-mb-0"
-                                          placeholder={field.placeholder}
-                                          value={getRequirementValue(
-                                            requirement,
-                                            field.key,
-                                          )}
-                                          onChange={(event) =>
-                                            handleDeliverableRequirementChange(
-                                              item.contentType,
+                                    {item.fields.map((field) => {
+                                      const validationField = `${item.contentType}.${field.key}`;
+                                      const fieldError = stepErrors.find(
+                                        (error) => error.field === validationField,
+                                      );
+                                      const errorId = `contract-builder-error-${item.contentType}-${field.key}`;
+
+                                      return (
+                                        <div
+                                          key={validationField}
+                                          className="min-w-0"
+                                        >
+                                          <Label className="text-xs text-neutral-500">
+                                            {field.label}
+                                          </Label>
+                                          <Input
+                                            data-validation-field={validationField}
+                                            aria-invalid={Boolean(fieldError)}
+                                            aria-describedby={fieldError ? errorId : undefined}
+                                            className={`mt-1 h-8 scroll-mb-36 bg-white text-xs lg:scroll-mb-0 ${
+                                              fieldError
+                                                ? "border-rose-400 ring-2 ring-rose-100 focus-visible:ring-rose-200"
+                                                : ""
+                                            }`}
+                                            placeholder={field.placeholder}
+                                            value={getRequirementValue(
+                                              requirement,
                                               field.key,
-                                              event.target.value,
-                                            )
-                                          }
-                                        />
-                                      </div>
-                                    ))}
+                                            )}
+                                            onChange={(event) =>
+                                              handleDeliverableRequirementChange(
+                                                item.contentType,
+                                                field.key,
+                                                event.target.value,
+                                              )
+                                            }
+                                          />
+                                          {fieldError ? (
+                                            <p
+                                              id={errorId}
+                                              className="mt-1.5 text-[11px] font-bold leading-4 text-rose-600"
+                                            >
+                                              {fieldError.message}
+                                            </p>
+                                          ) : null}
+                                        </div>
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               );
@@ -2372,13 +2440,13 @@ export function ContractBuilder() {
                     <ValidationSummary errors={allErrors} />
                   ) : (
                     <div className="rounded-[16px] border border-neutral-200 bg-[#fbfaf7] p-4 text-[13px] text-neutral-800">
-                      필수 조건이 모두 채워졌습니다. 초안 저장 또는 공유 링크 생성을 선택하세요.
+                      필수 조건이 모두 채워졌습니다. 초안 저장 또는 서명 링크 만들기를 선택하세요.
                     </div>
                   )}
 
                   {result?.stale && (
                     <div className="rounded-[16px] border border-amber-200 bg-amber-50 p-4 text-[13px] leading-6 text-amber-800">
-                      계약 내용을 수정했습니다. 기존 공유 링크에 반영하려면 다시 공유 링크를 생성하세요.
+                      계약 내용을 수정했습니다. 기존 링크를 교체하려면 새 서명 링크를 만드세요.
                     </div>
                   )}
 
@@ -2387,7 +2455,7 @@ export function ContractBuilder() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="font-extrabold text-amber-950">
-                            공유 링크 생성 전 사업자 인증이 필요합니다.
+                            서명 링크를 만들기 전 사업자 인증이 필요합니다.
                           </p>
                           <p className="mt-1 text-amber-800">
                             {isVerificationLoading
@@ -2459,8 +2527,8 @@ export function ContractBuilder() {
                     <div className="flex items-start gap-3">
                       <ShieldCheck className="mt-0.5 h-4 w-4 text-neutral-500" />
                       <p className="text-[13px] leading-6 text-neutral-600">
-                        공유 링크 생성 전에는 대시보드에 <b>초안</b>으로 저장됩니다. 링크 생성 후에만
-                        <b> 검토 중</b> 상태로 전환됩니다.
+                        서명 링크를 만들기 전에는 대시보드에 <b>초안</b>으로 저장됩니다. 링크를 만들면
+                        최종 계약서가 확정되어 <b> 서명 대기</b> 상태로 전환됩니다.
                       </p>
                     </div>
                   </ReviewBlock>
@@ -2481,10 +2549,10 @@ export function ContractBuilder() {
                           ? "초안 저장 확인 필요"
                           : "초안 저장 완료"
                       : resultSaveState === "syncing"
-                        ? "공유 링크 저장 중"
+                        ? "서명 링크 저장 중"
                         : resultSaveState === "error"
-                          ? "공유 링크 확인 필요"
-                          : "공유 링크 생성 완료"}
+                          ? "서명 링크 확인 필요"
+                          : "서명 링크 생성 완료"}
                   </h3>
                   <p className="mx-auto mb-6 max-w-[320px] text-[13px] leading-6 text-neutral-500">
                     {result.mode === "draft"
@@ -2508,7 +2576,7 @@ export function ContractBuilder() {
                       }`}
                     >
                       {resultSaveState === "error"
-                        ? "저장에 실패했습니다. 네트워크 상태를 확인한 뒤 다시 공유 링크를 생성하세요."
+                        ? "저장에 실패했습니다. 네트워크 상태를 확인한 뒤 다시 서명 링크를 만드세요."
                         : resultSaveState === "syncing"
                           ? "계약 내용을 저장하고 있습니다."
                           : "저장이 완료되었습니다. 링크를 전달해도 됩니다."}
@@ -2611,7 +2679,7 @@ export function ContractBuilder() {
                         !canSendContract
                       }
                     >
-                      공유 링크 생성
+                      서명 링크 만들기
                     </Button>
                   </>
                 )}
@@ -2991,11 +3059,15 @@ const formatDateRange = (start?: string, end?: string) => {
 };
 
 const ValidationSummary: React.FC<{ errors: ValidationError[] }> = ({ errors }) => (
-  <div className="mb-6 rounded-[16px] border border-amber-200 bg-amber-50 p-4 text-[13px] text-amber-800">
+  <div
+    role="alert"
+    aria-live="assertive"
+    className="mb-6 rounded-[16px] border border-amber-200 bg-amber-50 p-4 text-[13px] text-amber-800"
+  >
     <p className="mb-2 font-semibold">확인이 필요한 항목</p>
     <ul className="space-y-1">
       {errors.map((error) => (
-        <li key={`${error.step}-${error.field}`}>- {error.message}</li>
+        <li key={`${error.step}-${error.field}`}>{error.message}</li>
       ))}
     </ul>
   </div>

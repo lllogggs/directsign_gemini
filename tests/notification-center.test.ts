@@ -24,6 +24,24 @@ const migration = fs.readFileSync(
   "utf8",
 );
 const server = fs.readFileSync(path.join(root, "server", "index.ts"), "utf8");
+const atomicContractMigration = fs.readFileSync(
+  path.join(
+    root,
+    "supabase",
+    "migrations",
+    "20260811190000_atomic_contract_close.sql",
+  ),
+  "utf8",
+);
+const atomicDeliverableMigration = fs.readFileSync(
+  path.join(
+    root,
+    "supabase",
+    "migrations",
+    "20260811194000_atomic_deliverable_mutations.sql",
+  ),
+  "utf8",
+);
 
 const migrationSection = (start: string, end: string) => {
   const startIndex = migration.indexOf(start);
@@ -336,17 +354,19 @@ test("campaign applications stay operational without re-entering messages", () =
 });
 
 test("repeatable contract milestones use deterministic duplicate-safe events", () => {
-  assert.match(
-    server,
-    /post_link_submitted:\$\{sha256Hex\(postLink\)\}/,
+  const retiredPostLinkRoute = server.slice(
+    server.indexOf('app.post("/api/contracts/:id/post-link"'),
+    server.indexOf('app.post("/api/contracts/:id/deliverables"'),
+  );
+  assert.match(retiredPostLinkRoute, /status\(410\)/);
+  assert.match(retiredPostLinkRoute, /DELIVERABLE_ENDPOINT_REQUIRED/);
+  assert.doesNotMatch(
+    retiredPostLinkRoute,
+    /writeExistingContractWithCas|insertContractEvent|post_link_submitted/,
   );
   assert.match(
     server,
-    /eventId: postLinkEventId,[\s\S]*?ignoreDuplicate: true/,
-  );
-  assert.match(
-    server,
-    /eventId: stableUuid\(`\$\{contractId\}:event:deliverables_ready_to_close`\),[\s\S]*?ignoreDuplicate: true/,
+    /const readyEventId = stableUuid\([\s\S]*?`\$\{contract\.id\}:event:deliverables_ready_to_close`/,
   );
   assert.match(
     server,
@@ -356,16 +376,27 @@ test("repeatable contract milestones use deterministic duplicate-safe events", (
     server,
     /audit_events:\s*useSupabaseV2 \|\|[\s\S]*?\? existingAuditEvents/,
   );
-  const readyToCloseEvent = server.indexOf(
-    'eventType: "deliverables_ready_to_close"',
+  assert.match(
+    atomicDeliverableMigration,
+    /from public\.sync_directsign_deliverable_workflow_atomically/,
   );
-  const derivedWorkflowPatch = server.indexOf(
-    '"Supabase contract deliverable workflow update"',
+  assert.match(
+    atomicDeliverableMigration,
+    /insert into public\.contract_events[\s\S]*?from public\.sync_directsign_deliverable_workflow_atomically/,
   );
-  assert.ok(
-    readyToCloseEvent >= 0 && readyToCloseEvent < derivedWorkflowPatch,
-    "ready-to-close event must persist before the derived workflow update",
+  const atomicWorkflow = atomicContractMigration.slice(
+    atomicContractMigration.indexOf(
+      "create or replace function public.sync_directsign_deliverable_workflow_atomically",
+    ),
+    atomicContractMigration.indexOf(
+      "revoke all on function public.guard_active_contract_deliverable_mutation",
+    ),
   );
+  assert.match(atomicWorkflow, /for update/);
+  assert.match(atomicWorkflow, /update public\.directsign_contracts/);
+  assert.match(atomicWorkflow, /update public\.contracts/);
+  assert.match(atomicWorkflow, /'deliverables_ready_to_close'/);
+  assert.match(atomicWorkflow, /insert into public\.contract_events/);
 });
 
 test("SQL hardening uses core hashing and preserves immutable actor history", () => {
@@ -548,7 +579,20 @@ test("authoritative deliverable transitions have one durable Bell owner", () => 
   assert.match(contractReconcile, /'deliverable_approved'/);
   assert.match(contractReconcile, /not exists \([\s\S]*?notification_workflow_sources/);
   assert.match(contractReconcile, /source\.occurred_at = public\.notification_safe_timestamptz/);
-  assert.match(server, /transition_occurred_at: now/g);
+  assert.match(server, /finalizeDeliverableSubmissionAtomically/);
+  assert.match(server, /finalizeDeliverableReviewAtomically/);
+  assert.match(
+    atomicDeliverableMigration,
+    /'transition_occurred_at', p_occurred_at/,
+  );
+  assert.match(
+    atomicDeliverableMigration,
+    /insert into public\.contract_events[\s\S]*?from public\.sync_directsign_deliverable_workflow_atomically/,
+  );
+  assert.match(
+    atomicDeliverableMigration,
+    /revoke all on function public\.finalize_directsign_deliverable_review/,
+  );
 });
 
 test("recipient authorization and source selection fail closed on unknown provenance", () => {
